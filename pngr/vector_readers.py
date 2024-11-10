@@ -12,7 +12,7 @@ from sklearn.decomposition import PCA
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers.tokenization_utils_base import EncodingFast
 
-from .control import ControllableModel, model_layer_list
+from .ControllableModel import ControllableModel, model_layer_list
 
 ExtractMethod = Literal["pca_diff", "pca_center"]
 

@@ -1,10 +1,10 @@
-import dataclasses
-from typing import Any, Callable, Iterable, TYPE_CHECKING
+from typing import Any, Iterable, TYPE_CHECKING
 import warnings
 
 import torch
 from transformers import PretrainedConfig, PreTrainedModel
 
+from pngr.BlockControlParams import BlockControlParams
 from pngr.ControlLayer import ControlLayer
 
 if TYPE_CHECKING:
@@ -138,26 +138,6 @@ class ControllableModel(torch.nn.Module):
         Call the model, with control applied.
         """
         return self.model(*args, **kwargs)
-
-
-@dataclasses.dataclass
-class BlockControlParams:
-    """
-    Parameters for controlling a model block.
-    """
-
-    control: torch.Tensor | None = None
-    normalize: bool = False
-    operator: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = (
-        lambda current, control: current + control
-    )
-
-    @classmethod
-    def default(cls) -> "BlockControlParams":
-        """
-        The default control parameters.
-        """
-        return cls()
 
 
 def model_layer_list(model: ControllableModel | PreTrainedModel) -> torch.nn.ModuleList:

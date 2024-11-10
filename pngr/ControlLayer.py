@@ -2,7 +2,7 @@ from typing import Any
 
 import torch
 
-from pngr.control import BlockControlParams
+from pngr.BlockControlParams import BlockControlParams
 
 
 class ControlLayer(torch.nn.Module):

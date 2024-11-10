@@ -1,7 +1,11 @@
 from os import path
 import click
+import code
+import sys
 
 from . import create_dataset
+from .ControllableModel import ControllableModel
+from .ControlVector import ControlVector
 
 
 @click.group()
@@ -39,6 +43,36 @@ def train(model_name: str, dataset: str):
     pass
 
 
+@click.command()
+def shell():
+    """Launch an interactive pngr shell."""
+    # Prepare the namespace with commonly used classes/functions
+    namespace = {
+        "ControllableModel": ControllableModel,
+        "ControlVector": ControlVector,
+        "create_dataset": create_dataset,
+    }
+
+    banner = """
+    Welcome to the pngr interactive shell!
+    
+    Available objects:
+    - ControllableModel: Work with controllable language models
+    - ControlVector: Create and manipulate control vectors
+    - create_dataset: Dataset creation utilities
+    
+    Type help(<object>) for more information.
+    """
+
+    # Start the interactive shell
+    try:
+        code.InteractiveConsole(namespace).interact(banner=banner)
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
 pngr.add_command(dataset)
+pngr.add_command(train)
+pngr.add_command(shell)
 if __name__ == "__main__":
     pngr()
