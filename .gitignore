@@ -4,6 +4,7 @@ COV
 DEBUG
 OUT
 
+notebooks/example.ipynb/pngr
 .DS_Store
 src/old/
 # Byte-compiled / optimized / DLL files
