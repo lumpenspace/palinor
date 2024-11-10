@@ -33,7 +33,8 @@ def dataset(templates: str, a: str, b: str):
 
 @click.command()
 @click.option("--dataset", "-d", type=click.Path(exists=True))
-def train(dataset: str):
+@click.option("--model-name", "-m", type=str)
+def train(model_name: str, dataset: str):
     """Train a control vector."""
     pass
 
