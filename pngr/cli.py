@@ -5,7 +5,7 @@ import sys
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.traceback import install as rich_traceback_install
-
+from transformers import PreTrainedModel
 from . import create_dataset
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
@@ -50,6 +50,17 @@ def train(model_name: str, dataset: str):
 
 
 @click.command()
+def inference(model_name: str, control_vector: str):
+    """Perform inference with a control vector."""
+    # load model
+    vector_info = ControlVector.from_file(control_vector)
+    model = ControllableModel(
+        PreTrainedModel.from_pretrained(vector_info.model_type), layer_ids=[11]
+    )
+    model.load_control_vector(vector_info)
+
+
+@click.command()
 def shell():
     """Launch an interactive pngr shell with enhanced checks and prompts."""
     console = Console()
@@ -58,7 +69,9 @@ def shell():
     # Check for model selection
     model_name = Prompt.ask("Enter your model name", default="default_model")
     try:
-        model = ControllableModel(model=model_name, layer_ids=[11])
+        model = ControllableModel(
+            PreTrainedModel.from_pretrained(model_name), layer_ids=[11]
+        )
         console.print(f"Loaded model [bold green]{model_name}[/bold green]")
     except FileNotFoundError:
         console.print(
@@ -94,7 +107,8 @@ def shell():
         "model": model,
     }
 
-    banner = "Interactive shell is ready. Type help(<object>) for more information on specific objects."
+    banner = "Interactive shell is ready."
+    banner += "\nType help(<object>) for more information on specific objects."
 
     # Start the interactive shell
     try:

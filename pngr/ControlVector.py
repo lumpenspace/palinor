@@ -1,6 +1,7 @@
 import dataclasses
 import warnings
 from typing import Any
+import pickle
 
 import numpy as np
 import torch
@@ -112,3 +113,18 @@ class ControlVector:
 
     def __truediv__(self, other: int | float | np.int_ | np.float32) -> "ControlVector":
         return self.__mul__(1 / other)
+
+    @classmethod
+    def from_file(cls, path: str) -> "ControlVector":
+        """Load a control vector from a file."""
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        return cls(model_type=data["model_type"], poles=data["poles"])
+
+    def to_file(self, path: str) -> None:
+        """Save the control vector to a file."""
+        with open(path, "wb") as f:
+            pickle.dump(
+                {"poles": self.poles, "model_type": self.model_type},
+                f,
+            )

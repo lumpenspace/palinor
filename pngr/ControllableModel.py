@@ -13,14 +13,14 @@ if TYPE_CHECKING:
 
 class ControllableModel(torch.nn.Module):
     """
-    **This mutates the wrapped `model`! Be careful using `model` after.**
+    **Mutates the wrapped `model`!**
 
     A wrapped language model that can have controls set on its layers with `self.set_control`.
     """
 
     def __init__(self, model: PreTrainedModel, layer_ids: Iterable[int]):
         """
-        **This mutates the wrapped `model`! Be careful using `model` after.**
+        **Mutates the wrapped `model`!**
 
         Build a new ControlModel around a model instance, initializing control on
         the layers specified in `layer_ids`.

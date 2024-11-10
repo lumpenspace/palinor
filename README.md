@@ -40,6 +40,10 @@ Pngr supports dynamic injection of control vectors during inference, allowing re
 2. Load the desired model and control vectors.
 3. Perform inference by injecting different control vectors as needed to steer the output dynamically.
 
+## License
+
+(c) 2024 Lumpenspace and Vie McCoy
+
 ## Acknowledgements
 
 This project was inspired by the work of [vgel](https://x.com/vooooooogel), [Repeng](https://github.com/vgel/repeng),
