@@ -1,4 +1,5 @@
 # Palinor
+![Create lumpenspace (45)](https://github.com/user-attachments/assets/574e0072-a967-438c-b7c6-a5b913ded506)
 
 Palinor is a powerful tool designed to facilitate the generation of datasets, training of control vectors, and inference with dynamically injected control vectors. This document outlines the core functionalities and how to use them effectively.
 
