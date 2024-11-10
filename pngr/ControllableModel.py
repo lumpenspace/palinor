@@ -1,41 +1,67 @@
-from typing import Any, Iterable, TYPE_CHECKING
+"""
+Wrap a transformer layer with control logic.
+"""
+from typing import Any, Tuple, Union
 import warnings
 
 import torch
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import PreTrainedModel
 
 from pngr.BlockControlParams import BlockControlParams
-from pngr.ControlLayer import ControlLayer
-
-if TYPE_CHECKING:
-    from pngr.ControlVector import ControlVector
 
 
-class ControllableModel(torch.nn.Module):
+class ControlLayer(torch.nn.Module):
     """
-    **This mutates the wrapped `model`! Be careful using `model` after.**
-
-    A wrapped language model that can have controls set on its layers with `self.set_control`.
+    A wrapper around a transformer layer that can apply control vectors.
     """
 
-    def __init__(self, model: PreTrainedModel, layer_ids: Iterable[int]):
-        """
-        **This mutates the wrapped `model`! Be careful using `model` after.**
-
-        Build a new ControlModel around a model instance, initializing control on
-        the layers specified in `layer_ids`.
-        """
-
+    def __init__(self, block: torch.nn.Module):
         super().__init__()
-        self.model = model
+        self.block = block
+        self.control_params: BlockControlParams | None = None
 
-        layers = model_layer_list(model)
-        self.layer_ids = [i if i >= 0 else len(layers) + i for i in layer_ids]
-        for layer_id in layer_ids:
-            layer = layers[layer_id]
-            if not isinstance(layer, ControlLayer):
-                layers[layer_id] = ControlLayer(layer)
+    def set_control(self, params: BlockControlParams) -> None:
+        """
+        Set the control parameters to use for this layer.
+        """
+        self.control_params = params
+
+    def reset(self) -> None:
+        """
+        Reset the control tensor for this layer.
+        """
+        self.control_params = None
+
+    def forward(
+        self,
+        *args: Any,
+        output_attentions: bool = False,
+        **kwargs: Any,
+    ) -> Union[Any, Tuple[Union[Any, torch.Tensor], ...], torch.Tensor]:
+        """
+        Forward pass through the layer, applying control if set.
+        """
+        if len(args) != 1:
+            warnings.warn(
+                f"ControlLayer got {len(args)} args, expected 1. Control might not work."
+            )
+        out = self.block(*args, output_attentions=output_attentions, **kwargs)
+        if self.control_params is not None:
+            if isinstance(out, tuple):
+                hidden_states = out[0]
             else:
+                hidden_states = out
+
+            # this will modify hidden_states in-place
+            self.control_params.apply_to_hidden_states(hidden_states)
+
+        return out
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        Forward any unknown attributes to the wrapped block.
+        """
+        return getattr(self.block, name)
                 warnings.warn(
                     "Trying to rewrap a wrapped model! Probably not what you want! "
                     + "Try calling .unwrap first."

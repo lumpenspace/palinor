@@ -1,7 +1,20 @@
 from os import path
 import click
 import code
+# Write the fixed content to the file
+with open('/content/pngr/pngr/ControlLayer.py', 'w') as f:
+    f.write('''[paste the above code here]''')
+
+# Then import and run your code
 import sys
+sys.path.append('/content/pngr')
+
+from pngr.cli import train
+
+# Run the training
+train(model_name="meta-llama/Llama-2-7b-hf", 
+      dataset="vector_dataset.jsonl", 
+      output="control_vector.pt")
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.traceback import install as rich_traceback_install
