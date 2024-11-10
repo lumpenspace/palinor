@@ -8,7 +8,7 @@ from pngr.BlockControlParams import BlockControlParams
 from pngr.ControlLayer import ControlLayer
 
 if TYPE_CHECKING:
-    from .ControlVector import ControlVector
+    from pngr.ControlVector import ControlVector
 
 
 class ControllableModel(torch.nn.Module):
