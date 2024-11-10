@@ -8,7 +8,8 @@ import torch
 from transformers import PreTrainedTokenizerBase, PreTrainedModel
 
 from pngr.ControllableModel import ControllableModel
-from pngr.vector_readers import DatasetEntry, read_representations
+from pngr.Message import DatasetEntry
+from pngr.vector_readers import read_representations
 
 
 @dataclasses.dataclass

@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 import yaml
 
-from .vector_readers import DatasetEntry
+from .Message import DatasetEntry
 
 
 def load_yaml_template(file_path: str) -> List[Dict[str, Any]]:
