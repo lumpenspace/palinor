@@ -1,16 +1,16 @@
-# Pngr
+# Palinor
 
-Pngr is a powerful tool designed to facilitate the generation of datasets, training of control vectors, and inference with dynamically injected control vectors. This document outlines the core functionalities and how to use them effectively.
+Palinor is a powerful tool designed to facilitate the generation of datasets, training of control vectors, and inference with dynamically injected control vectors. This document outlines the core functionalities and how to use them effectively.
 
 ## Installation
 
 ```bash
-poetry install git+https://github.com/lumpenspace/pngr.git
+poetry install git+https://github.com/lumpenspace/palinor.git
 ```
 
 ## Features
 
-`pngr` is a command line interface for the Pngr application.
+`palinor` is a command line interface for the Pngr application.
 
 ### Dataset Generation for Training Control Vectors
 
@@ -18,7 +18,7 @@ Pngr allows users to generate datasets tailored for training control vectors. Th
 
 **How to Use:**
 
-1. Run the `pngr dataset` command with the required adjectives.
+1. Run the `palinor dataset` command with the required adjectives.
 2. The system will automatically generate a dataset and save it in a specified format.
 
 ### Control Vector Training
@@ -27,7 +27,7 @@ Once a dataset is prepared, Pngr can train control vectors that are capable of g
 
 **How to Use:**
 
-1. Use the `pngr train` command with the path to your dataset and the desired model configuration.
+1. Use the `palinor train` command with the path to your dataset and the desired model configuration.
 2. The training process will optimize control vectors to achieve the desired text manipulations.
 
 ### Inference with Dynamically Injected Control Vectors
@@ -36,7 +36,7 @@ Pngr supports dynamic injection of control vectors during inference, allowing re
 
 **How to Use:**
 
-1. Start the interactive shell using `pngr shell`.
+1. Start the interactive shell using `palinor shell`.
 2. Load the desired model and control vectors.
 3. Perform inference by injecting different control vectors as needed to steer the output dynamically.
 
