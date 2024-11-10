@@ -133,7 +133,9 @@ def dataset(name: str, a_trait: str, b_trait: str, templates: Optional[str]) -> 
 @click.argument("name")
 @click.argument("a_trait")
 @click.argument("b_trait")
-@click.option("--model", "-m", help="Model to use", default="meta-llama/Llama-3.2-1B")
+@click.option(
+    "--model", "-m", help="Model to use", default="meta-llama/Llama-3.2-1B-Instruct"
+)
 @click.option("--token", help="HuggingFace token for gated models")
 def train(name: str, a_trait: str, b_trait: str, model: str, token: Optional[str]):
     """Train a new control vector."""

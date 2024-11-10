@@ -193,7 +193,7 @@ class PngrManager:
         # Format prompt using Llama chat format with system message
         formatted_prompt = message_template(
             prompt,
-            system_message="you are a helpful AI assistant for travel tips and recommendations",
+            system_message="you are a helpful AI assistant",
         )
 
         # Extract generation parameters
@@ -273,53 +273,3 @@ class PngrManager:
         except Exception as e:
             console.print(f"[red]Error generating tweet: {str(e)}[/red]")
             return f"Error generating tweet: {str(e)}"
-
-    def batch_generate(
-        self,
-        prompts: list[str],
-        vector_name: Optional[str] = None,
-        coeff: float = 1.0,
-        **kwargs: Any,
-    ) -> list[str]:
-        """
-        Generate multiple responses in batch.
-
-        Args:
-            prompts: List of input prompts
-            vector_name: Name of vector to use (if any)
-            coeff: Control strength
-            **kwargs: Additional generation parameters
-
-        Returns:
-            List of generated texts
-        """
-        if vector_name is not None:
-            self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
-        else:
-            self.controllable_model.reset()
-
-        # Format prompts using Llama chat format with system message
-        formatted_prompts = [message_template(p.content) for p in prompts]
-
-        # Tokenize all prompts
-        inputs = self.tokenizer(
-            formatted_prompts, padding=True, return_tensors="pt"
-        ).to(self.model.device)
-
-        # Generate
-        outputs = self.controllable_model.generate(
-            **inputs,
-            max_new_tokens=kwargs.pop("max_new_tokens", 50),
-            pad_token_id=self.tokenizer.eos_token_id,
-            **kwargs,
-        )
-
-        # Decode and clean responses
-        responses = []
-        for output, prompt in zip(outputs, prompts):
-            response = self.tokenizer.decode(output, skip_special_tokens=True)
-            if response.startswith(prompt):
-                response = response[len(prompt) :].strip()
-            responses.append(response.strip())
-
-        return responses

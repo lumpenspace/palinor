@@ -18,7 +18,7 @@ pygments = "^2.18.0"
 keyboard = "^0.13.5"
 poetry = "^1.8.3"
 umap = "^0.1.1"
-torch = "^2.5.1"
+torch = {version = "^2.1.0", source = "pytorch"}
 transformers = "^4.46.2"
 scikit-learn = "^1.5.2"
 accelerate = ">=0.26.0"
@@ -45,3 +45,8 @@ pngr = "pngr.cli:pngr"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu118"  # or cu121 for CUDA 12.1
+priority = "explicit"

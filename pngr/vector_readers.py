@@ -171,7 +171,7 @@ def read_representations(
     Read and process hidden state representations from the model.
     """
     if isinstance(model, ControllableModel):
-        layers = model.layer_ids
+        layers: list[int] = model.layer_ids
     else:
         # Default to last 3 layers if not specified
         layers = [-1, -2, -3]
