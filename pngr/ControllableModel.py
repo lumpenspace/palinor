@@ -1,5 +1,5 @@
 """
-Wrap a transformer layer with control logic.
+Provides the ControllableModel class for wrapping language models with control capabilities.
 """
 
 from typing import Any, Iterable, TYPE_CHECKING
@@ -7,27 +7,35 @@ import warnings
 
 import torch
 from transformers import PreTrainedModel, PretrainedConfig
+
 from pngr.BlockControlParams import BlockControlParams
 from pngr.ControlLayer import ControlLayer
+
 
 if TYPE_CHECKING:
     from .ControlVector import ControlVector
 
+
 class ControllableModel(torch.nn.Module):
     """
-    **Mutates the wrapped `model`! Be careful using `model` after.**
+    A wrapped language model that can have controls set on its layers.
 
-    A wrapped language model that can have controls set on its layers with `self.set_control`.
+    **Warning**: This mutates the wrapped `model`! Be careful using `model` after wrapping.
+
+    The ControllableModel allows dynamic injection of control vectors into specific layers
+    of a language model, enabling fine-grained control over the model's behavior.
     """
 
     def __init__(self, model: PreTrainedModel, layer_ids: Iterable[int]):
         """
-        **Mutates the wrapped `model`! Be careful using `model` after.**
+        Initialize a new ControllableModel by wrapping an existing model.
 
-        Build a new ControlModel around a model instance, initializing control on
-        the layers specified in `layer_ids`.
+        Args:
+            model: The language model to wrap
+            layer_ids: Which layers to enable control on. Negative indices count from end.
+
+        **Warning**: This mutates the wrapped `model`! Be careful using `model` after wrapping.
         """
-
         super().__init__()
         self.model = model
 
@@ -40,29 +48,25 @@ class ControllableModel(torch.nn.Module):
             else:
                 warnings.warn(
                     "Trying to rewrap a wrapped model! Probably not what you want! "
-                    + "Try calling .unwrap first."
+                    "Try calling .unwrap first."
                 )
 
     @property
     def config(self) -> PretrainedConfig:
-        """
-        The model's configuration.
-        """
+        """Get the model's configuration."""
         return self.model.config
 
     @property
     def device(self) -> torch.device:
-        """
-        The model's device.
-        """
+        """Get the model's device."""
         return self.model.device
 
     def unwrap(self) -> PreTrainedModel:
         """
-        Removes the mutations done to the wrapped model and returns it.
+        Remove control wrappers and return the original model.
+
         After using this method, `set_control` and `reset` will not work.
         """
-
         layers = model_layer_list(self.model)
         for layer_id in self.layer_ids:
             layers[layer_id] = layers[layer_id].block
@@ -72,17 +76,15 @@ class ControllableModel(torch.nn.Module):
         self, control: "ControlVector", coeff: float = 1.0, **kwargs: Any
     ) -> None:
         """
-        Set a `ControlVector` for the layers this ControlModel handles, with a strength given
-        by `coeff`. (negative `coeff` values invert the control vector, e.g. happiness→sadness.)
-        `coeff` defaults to `1.0`.
+        Set a control vector for the controlled layers.
 
-        Additional kwargs:
-        - `normalize: bool`: track the magnitude of the non-modified activation, and rescale
-          the activation to that magnitude after control (default: `False`)
-        - `operator: Callable[[Tensor, Tensor], Tensor]`: how to combine the base output and
-          control (default: +)
+        Args:
+            control: The control vector to apply
+            coeff: Strength of control (negative inverts the control, e.g. happy→sad)
+            **kwargs: Additional control parameters
+                normalize: Rescale activations after control (default: False)
+                operator: How to combine base output and control (default: +)
         """
-
         raw_control = {}
         for layer_id in self.layer_ids:
             raw_control[layer_id] = torch.tensor(coeff * control.poles[layer_id]).to(
@@ -91,30 +93,21 @@ class ControllableModel(torch.nn.Module):
         self.set_raw_control(raw_control, **kwargs)
 
     def reset(self) -> None:
-        """
-        Resets the control for all layer_ids, returning the model to base behavior.
-        """
+        """Reset all layer controls, returning the model to base behavior."""
         self.set_raw_control(None)
 
     def set_raw_control(
         self, control: dict[int, torch.Tensor] | None, **kwargs: Any
     ) -> None:
         """
-        Set or remove control parameters to the layers this ControlModel handles.
-        The keys of `control` should be equal to or a superset of the `layer_ids` passed to
-        __init__.
-        Only those layers will be controlled, any others in `control` will be ignored.
+        Set or remove raw control parameters for controlled layers.
 
-        Passing `control=None` will reset the control tensor for all layer_ids, making the
-        model act like a non-control model.
-
-        Additional kwargs:
-        - `normalize: bool`: track the magnitude of the non-modified activation, and rescale
-          the activation to that magnitude after control (default: `False`)
-        - `operator: Callable[[Tensor, Tensor], Tensor]`: how to combine the base output and
-          control (default: +)
+        Args:
+            control: Dict mapping layer IDs to control tensors, or None to reset
+            **kwargs: Additional control parameters
+                normalize: Rescale activations after control (default: False)
+                operator: How to combine base output and control (default: +)
         """
-
         layers = model_layer_list(self.model)
         for layer_id in self.layer_ids:
             layer: ControlLayer = layers[layer_id]  # type: ignore
@@ -124,28 +117,31 @@ class ControllableModel(torch.nn.Module):
                 layer.set_control(BlockControlParams(control[layer_id], **kwargs))
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """
-        Forward pass through the model, with control applied.
-        """
+        """Forward pass through the model, with control applied."""
         return self.model.forward(*args, **kwargs)
 
     def generate(self, *args: Any, **kwargs: Any) -> Any:
-        """
-        Generate output from the model, with control applied.
-        """
+        """Generate output from the model, with control applied."""
         return self.model.generate(*args, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """
-        Call the model, with control applied.
-        """
+        """Call the model, with control applied."""
         return self.model(*args, **kwargs)
 
-def model_layer_list(model: ControllableModel | PreTrainedModel) -> torch.nn.ModuleList:
-    """
-    Get the list of layers from a model.
-    """
 
+def model_layer_list(model: "ControllableModel | PreTrainedModel") -> torch.nn.ModuleList:
+    """
+    Get the list of transformer layers from a model.
+
+    Args:
+        model: The model to extract layers from
+
+    Returns:
+        ModuleList containing the model's transformer layers
+
+    Raises:
+        ValueError: If the model architecture is not recognized
+    """
     if isinstance(model, ControllableModel):
         model = model.model
 
