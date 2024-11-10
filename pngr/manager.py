@@ -189,9 +189,6 @@ class PngrManager:
                 )
             console.print(f"Using vector '{vector_name}' with strength {coeff}")
             self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
-        else:
-            self.controllable_model.reset()
-
         # Format prompt using Llama chat format with system message
         formatted_prompt = (
             "[INST] <<SYS>>Answer directly and concisely.<</SYS>>\n\n"
@@ -220,11 +217,11 @@ class PngrManager:
 
             # Clean up the response
             if response.startswith(formatted_prompt):
-                response = response[len(formatted_prompt):].strip()
+                response = response[len(formatted_prompt) :].strip()
 
             # Escape any rich markup characters
             response = response.replace("[", "\\[").replace("]", "\\]")
-
+            self.controllable_model.reset()
             return response
 
         except Exception as e:
@@ -327,7 +324,7 @@ class PngrManager:
         for output, prompt in zip(outputs, prompts):
             response = self.tokenizer.decode(output, skip_special_tokens=True)
             if response.startswith(prompt):
-                response = response[len(prompt):].strip()
+                response = response[len(prompt) :].strip()
             responses.append(response.strip())
 
         return responses

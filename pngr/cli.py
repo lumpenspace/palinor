@@ -17,73 +17,77 @@ console = Console()
 
 class PngrShell:
     """Interactive shell helper for Pngr operations."""
-    
+
     def __init__(self, manager: PngrManager):
         self.manager = manager
         self.datasets = {}  # Store created datasets
-    
-    def create_dataset(self, name: str, a_trait: str, b_trait: str, 
-                      template_path: Optional[str] = None):
+
+    def create_dataset(
+        self, name: str, a_trait: str, b_trait: str, template_path: Optional[str] = None
+    ):
         """Create a new dataset of personality prompts."""
         if template_path is None:
             template_path = str(
                 Path(__file__).parent.parent / "dataset_templates/alphapenger.yaml"
             )
-        
+
         prompts = create_dataset.create_personality_prompts(
             template_path, a_trait, b_trait
         )
-        
+
         # Save to ~/.pngr/datasets/
         datasets_dir = Path.home() / ".pngr" / "datasets"
         datasets_dir.mkdir(parents=True, exist_ok=True)
         output_path = datasets_dir / f"{name}.jsonl"
-        
+
         create_dataset.save_prompts(prompts, str(output_path))
         self.datasets[name] = prompts
-        console.print(f"[green]Created dataset '{name}' with {len(prompts)} prompts[/green]")
+        console.print(
+            f"[green]Created dataset '{name}' with {len(prompts)} prompts[/green]"
+        )
         console.print(f"[green]Saved to {output_path}[/green]")
-    
+
     def list_datasets(self):
         """List all available datasets."""
         if not self.datasets:
             console.print("[yellow]No datasets created yet[/yellow]")
             return
-        
+
         console.print("[bold]Available datasets:[/bold]")
         for name, dataset in self.datasets.items():
             console.print(f"  • {name} ({len(dataset)} prompts)")
-    
+
     def train_vector(self, name: str, dataset_name: str):
         """Train a new control vector using a dataset."""
         if dataset_name not in self.datasets:
             console.print(f"[red]Dataset '{dataset_name}' not found[/red]")
             return
-        
+
         dataset = self.datasets[dataset_name]
         with console.status(f"Training vector '{name}'..."):
             self.manager.train_vector(name, dataset[0].a_trait, dataset[0].b_trait)
         console.print(f"[green]Vector {name} trained and saved![/green]")
-    
+
     def list_vectors(self):
         """List all available vectors."""
         vectors = self.manager.list_vectors()
         if not vectors:
             console.print("[yellow]No vectors available[/yellow]")
             return
-        
+
         console.print("[bold]Available vectors:[/bold]")
         for vector in vectors:
             console.print(f"  • {vector}")
-    
-    def complete(self, prompt: str, vector: Optional[str] = None, 
-                strength: float = 1.0):
+
+    def complete(
+        self, prompt: str, vector: Optional[str] = None, strength: float = 1.0
+    ):
         """Complete text with optional vector control."""
         output = self.manager.generate(prompt, vector_name=vector, coeff=strength)
         console.print("\n[bold]Generated text:[/bold]")
         console.print(output)
         return output
-    
+
     def help(self):
         """Show available commands."""
         console.print("[bold]Available commands:[/bold]")
@@ -111,12 +115,14 @@ def dataset(name: str, a_trait: str, b_trait: str, templates: Optional[str]) -> 
     # Create datasets directory
     datasets_dir = Path.home() / ".pngr" / "datasets"
     datasets_dir.mkdir(parents=True, exist_ok=True)
-    
+
     template_path = (
         templates or Path(__file__).parent.parent / "dataset_templates/alphapenger.yaml"
     )
-    prompts = create_dataset.create_personality_prompts(str(template_path), a_trait, b_trait)
-    
+    prompts = create_dataset.create_personality_prompts(
+        str(template_path), a_trait, b_trait
+    )
+
     # Save to ~/.pngr/datasets/
     output_path = datasets_dir / f"{name}.jsonl"
     create_dataset.save_prompts(prompts, str(output_path))
@@ -143,8 +149,13 @@ def train(name: str, a_trait: str, b_trait: str, model: str, token: Optional[str
 @click.option("--vector", "-v", help="Vector to use")
 @click.option("--strength", "-s", help="Control strength", default=1.0, type=float)
 @click.option("--token", help="HuggingFace token for gated models")
-def complete(prompt: str, model: str, vector: Optional[str], 
-            strength: float, token: Optional[str]):
+def complete(
+    prompt: str,
+    model: str,
+    vector: Optional[str],
+    strength: float,
+    token: Optional[str],
+):
     """Generate text with optional vector control."""
     manager = PngrManager(model, hf_token=token)
     output = manager.generate(prompt, vector_name=vector, coeff=strength)
@@ -174,13 +185,10 @@ def shell(model: str):
     shell_helper = PngrShell(manager)
 
     banner = (
-        f"Pngr shell for model {model}\n"
-        "Type shell.help() for available commands"
+        f"Pngr shell for model {model}\n" "Type shell.help() for available commands"
     )
     start_ipython(
-        argv=[],
-        user_ns={"manager": manager, "shell": shell_helper},
-        banner1=banner
+        argv=[], user_ns={"manager": manager, "shell": shell_helper}, banner1=banner
     )
 
 
