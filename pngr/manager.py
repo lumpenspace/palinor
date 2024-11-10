@@ -26,6 +26,8 @@ dotenv.load_dotenv()
 
 console = Console()
 
+hf_token = os.getenv("HF_TOKEN")
+
 
 class PngrManager:
     """
@@ -93,6 +95,7 @@ class PngrManager:
             cache_dir=str(self.models_dir),
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
             device_map="auto" if self.device == "cuda" else None,
+            token=hf_token,
         )
 
         if self.device == "cuda":
@@ -209,6 +212,7 @@ class PngrManager:
             outputs = self.controllable_model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
+                temperature=0.0,
                 pad_token_id=self.tokenizer.eos_token_id,
                 **kwargs,
             )
