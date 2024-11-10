@@ -37,7 +37,8 @@ class ControlVector:
             dataset: The dataset used for training.
             **kwargs: Additional keyword arguments.
                 max_batch_size (int): Maximum batch size for training (default: 32).
-                method (str): Training method, "pca_diff" or "pca_center" (default: "pca_diff").
+                method (str): Training method, pca_diff or pca_center
+                    (default: `pca_diff`).
 
         Returns:
             ControlVector: The trained vector.

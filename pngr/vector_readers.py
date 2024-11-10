@@ -1,159 +1,169 @@
 """
-Read the representations from a model.
+Utilities for reading and processing control vectors.
 """
 
-import dataclasses
-from typing import Any, Callable, Iterable, Literal
+from dataclasses import dataclass
+from typing import Any, Literal, Sequence
 
 import numpy as np
 import torch
-import tqdm
-from sklearn.decomposition import PCA
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-from transformers.tokenization_utils_base import EncodingFast
 
-from .ControllableModel import ControllableModel, model_layer_list
-
-ExtractMethod = Literal["pca_diff", "pca_center"]
+from .ControllableModel import ControllableModel
 
 
-@dataclasses.dataclass
+@dataclass
+class Message:
+    """
+    A single message in a chat conversation.
+
+    Attributes:
+        role: The role of the speaker ("system", "user", or "assistant")
+        content: The content of the message
+    """
+
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+    def to_llama_string(self) -> str:
+        """Convert message to Llama chat format."""
+        if self.role == "system":
+            return f"<s>[INST] <<SYS>>\n{self.content}\n<</SYS>>\n\n"
+        elif self.role == "user":
+            return f"[INST] {self.content} [/INST]"
+        else:  # assistant
+            return f"{self.content} </s>"
+
+
+@dataclass
 class DatasetEntry:
     """
-    A and B are strings that are contrastive examples.
+    A pair of contrastive examples.
+
+    Attributes:
+        a: First sequence of messages
+        b: Second sequence of messages
     """
 
-    a: str
-    b: str
+    a: Sequence[Message]
+    b: Sequence[Message]
 
-
-def read_representations(
-    model: "PreTrainedModel | ControllableModel",
-    tokenizer: PreTrainedTokenizerBase,
-    inputs: list[DatasetEntry],
-    hidden_layers: Iterable[int] | None = None,
-    batch_size: int = 32,
-    method: ExtractMethod = "pca_diff",
-    transform_hiddens: (
-        Callable[
-            [dict[int, np.ndarray[Any, Any]]],
-            dict[int, np.ndarray[Any, Any]],
-        ]
-        | None
-    ) = None,
-) -> dict[int, np.ndarray[Any, Any]]:
-    """
-    Extract the representations based on the contrast dataset.
-    """
-    if not hidden_layers:
-        hidden_layers = range(-1, -model.config.num_hidden_layers, -1)
-
-    # normalize the layer indexes if they're b
-    n_layers = len(model_layer_list(model))
-    hidden_layers = [i if i >= 0 else n_layers + i for i in hidden_layers]
-
-    # the order is [a, b, a, b, ...]
-    train_strs = [s for ex in inputs for s in (ex.a, ex.b)]
-
-    hidden_states = get_batch_hidden_states(
-        model, tokenizer, train_strs, hidden_layers, batch_size
-    )
-
-    if transform_hiddens is not None:
-        hidden_states: dict[int, np.ndarray[Any, Any]] = transform_hiddens(
-            hidden_states
-        )
-
-    # get poles for each layer using PCA
-    poles: dict[int, np.ndarray[Any, Any]] = {}
-    for layer in tqdm.tqdm(hidden_layers):
-        h = hidden_states[layer]
-        assert h.shape[0] == len(inputs) * 2
-
-        if method == "pca_diff":
-            train = h[::2] - h[1::2]
-        elif method == "pca_center":
-            center = (h[::2] + h[1::2]) / 2
-            train = h
-            train[::2] -= center
-            train[1::2] -= center
-        else:
-            raise ValueError("unknown method " + method)
-
-        # shape (1, n_features)
-        pca_model = PCA(n_components=1, whiten=False).fit(train)
-        # shape (n_features,)
-        poles[layer] = pca_model.components_.astype(np.float32).squeeze(axis=0)
-        # calculate sign
-        projected_hiddens = project_onto_direction(h, poles[layer])
-
-        # order is [a, b, a, b, ...]
-        a_smaller_mean = np.mean(
-            [
-                projected_hiddens[i] < projected_hiddens[i + 1]
-                for i in range(0, len(inputs) * 2, 2)
-            ]
-        )
-        a_larger_mean = np.mean(
-            [
-                projected_hiddens[i] > projected_hiddens[i + 1]
-                for i in range(0, len(inputs) * 2, 2)
-            ]
-        )
-        # if the mean of the a's is greater than the mean of the b's, invert the pole§
-        if a_smaller_mean > a_larger_mean:  # type: ignore
-            poles[layer] *= -1
-
-    return poles
+    def to_llama_strings(self) -> tuple[str, str]:
+        """Convert both message sequences to Llama chat format."""
+        a_string = "".join(msg.to_llama_string() for msg in self.a)
+        b_string = "".join(msg.to_llama_string() for msg in self.b)
+        return a_string, b_string
 
 
 def get_batch_hidden_states(
     model: PreTrainedModel | ControllableModel,
     tokenizer: PreTrainedTokenizerBase,
-    inputs: list[str],
-    hidden_layers: list[int],
+    inputs: Sequence[DatasetEntry],
+    hidden_layers: Sequence[int],
     batch_size: int,
 ) -> dict[int, np.ndarray[Any, Any]]:
     """
-    Using the given model and tokenizer, pass the inputs through the model and get the hidden
-    states for each layer in `hidden_layers` for the last token.
+    Get hidden states for a batch of inputs.
 
-    Returns a dictionary with a single entry for each `hidden_layer` with a numpy array
-    of shape `(n_inputs, hidden_dim)`.
+    Args:
+        model: The model to get hidden states from
+        tokenizer: Tokenizer for the model
+        inputs: Sequence of dataset entries
+        hidden_layers: Which layers to get hidden states from
+        batch_size: How many inputs to process at once
+
+    Returns:
+        Dictionary mapping layer numbers to hidden states
     """
-    batched_inputs: list[list[str]] = [
-        inputs[p : p + batch_size] for p in range(0, len(inputs), batch_size)
-    ]
-    hidden_states = {layer: [] for layer in hidden_layers}
-    with torch.no_grad():
-        for batch in tqdm.tqdm(batched_inputs):
-            # get the last token, handling right padding if present
-            encoded_batch = tokenizer(batch, padding=True, return_tensors="pt")
-            encoded_batch = encoded_batch.to(model.device)
-            out = model(**encoded_batch, output_hidden_states=True)
-            attention_mask: Any | EncodingFast = encoded_batch["attention_mask"]
-            for i in range(len(batch)):
-                last_non_padding_index = (
-                    attention_mask[i].nonzero(as_tuple=True)[0][-1].item()
-                )
-                for layer in hidden_layers:
-                    hidden_idx = layer + 1 if layer >= 0 else layer
-                    hidden_state = (
-                        out.hidden_states[hidden_idx][i][last_non_padding_index]
-                        .cpu()
-                        .float()
-                        .numpy()
-                    )
-                    hidden_states[layer].append(hidden_state)
-            del out
+    device = model.device
+    all_hidden_states: dict[int, list[np.ndarray[Any, Any]]] = {
+        layer: [] for layer in hidden_layers
+    }
 
-    return {k: np.vstack(v) for k, v in hidden_states.items()}
+    # Process in batches
+    for i in range(0, len(inputs), batch_size):
+        batch: Sequence[DatasetEntry] = inputs[i : i + batch_size]
+
+        # Convert to Llama format and tokenize
+        a_texts, b_texts = zip(*(entry.to_llama_strings() for entry in batch))
+
+        # Tokenize both sets
+        a_tokens = tokenizer(
+            list(a_texts), return_tensors="pt", padding=True, truncation=True
+        ).to(device)
+
+        b_tokens = tokenizer(
+            list(b_texts), return_tensors="pt", padding=True, truncation=True
+        ).to(device)
+
+        # Get hidden states for both sets
+        with torch.no_grad():
+            a_output = model(**a_tokens, output_hidden_states=True, return_dict=True)
+            b_output = model(**b_tokens, output_hidden_states=True, return_dict=True)
+
+        # Extract and store hidden states
+        for layer in hidden_layers:
+            a_states = a_output.hidden_states[layer]
+            b_states = b_output.hidden_states[layer]
+
+            # Average over sequence length
+            a_mean = a_states.mean(dim=1).cpu().numpy()
+            b_mean = b_states.mean(dim=1).cpu().numpy()
+
+            all_hidden_states[layer].extend(a_mean)
+            all_hidden_states[layer].extend(b_mean)
+
+    # Concatenate all batches
+    return {
+        layer: np.concatenate(states, axis=0)
+        for layer, states in all_hidden_states.items()
+    }
 
 
-def project_onto_direction(
-    H: np.ndarray[Any, Any], direction: np.ndarray[Any, Any]
-) -> np.ndarray[Any, Any]:
-    """Project matrix H (n, d_1) onto direction vector (d_2,)"""
-    mag: np.floating[Any] = np.linalg.norm(direction)
-    assert not np.isinf(mag)
-    return (H @ direction) / mag
+def read_representations(
+    model: PreTrainedModel | ControllableModel,
+    tokenizer: PreTrainedTokenizerBase,
+    dataset: Sequence[DatasetEntry],
+    max_batch_size: int = 32,
+    method: Literal["pca_diff", "pca_center"] = "pca_diff",
+    **kwargs: Any,
+) -> dict[int, np.ndarray[Any, Any]]:
+    """
+    Read and process hidden state representations from the model.
+
+    Args:
+        model: Model to get representations from
+        tokenizer: Tokenizer for the model
+        dataset: Dataset to process
+        max_batch_size: Maximum batch size for processing
+        method: Method for computing control vector ("pca_diff" or "pca_center")
+        **kwargs: Additional arguments passed to get_batch_hidden_states
+
+    Returns:
+        Dictionary mapping layer numbers to control vectors
+    """
+    if isinstance(model, ControllableModel):
+        layers = model.layer_ids
+    else:
+        # Default to last 3 layers if not specified
+        layers = [-1, -2, -3]
+
+    hidden_states = get_batch_hidden_states(
+        model, tokenizer, dataset, layers, max_batch_size
+    )
+
+    # Process hidden states based on method
+    control_vectors = {}
+    for layer, states in hidden_states.items():
+        if method == "pca_diff":
+            # Compute difference between A and B examples
+            diff = states[::2] - states[1::2]
+            # Use first principal component as control vector
+            u, _, _ = np.linalg.svd(diff, full_matrices=False)
+            control_vectors[layer] = u[:, 0]
+        else:  # pca_center
+            # Use first principal component directly
+            u, _, _ = np.linalg.svd(states, full_matrices=False)
+            control_vectors[layer] = u[:, 0]
+
+    return control_vectors

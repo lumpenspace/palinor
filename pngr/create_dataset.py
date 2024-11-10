@@ -4,6 +4,8 @@ from typing import Any, Dict, List
 
 import yaml
 
+from .vector_readers import DatasetEntry
+
 
 def load_yaml_template(file_path: str) -> List[Dict[str, Any]]:
     """Load YAML template file."""
@@ -15,7 +17,7 @@ def create_personality_prompts(
     template_path: str = "dataset_templates/alphapenger.yaml",
     a_adjective: str = "good-hearted",
     b_adjective: str = "mischievous",
-) -> List[Dict[str, str]]:
+) -> List[DatasetEntry]:
     """Create prompts interpolated with two different personalities."""
 
     templates = load_yaml_template(template_path)
