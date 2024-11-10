@@ -71,90 +71,86 @@ def get_batch_hidden_states(
     tokenizer.padding_side = "left"  # LLMs need left padding
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Process in smaller chunks to avoid memory issues
-    chunk_size = min(32, len(a_prompts))
-    total_chunks = (len(a_prompts) + chunk_size - 1) // chunk_size
+    # Get token lengths for all prompts
+    console.print("Calculating sequence lengths...")
+    a_lengths = [len(tokenizer.encode(p)) for p in a_prompts]
+    b_lengths = [len(tokenizer.encode(p)) for p in b_prompts]
+    max_length = max(max(a_lengths), max(b_lengths))
+    console.print(f"Max sequence length: {max_length}")
+
+    # Initialize hidden states storage
     hidden_states = {layer_idx: [] for layer_idx in hidden_layers}
 
-    for chunk_idx in range(3):
-        start_idx = chunk_idx * chunk_size
-        end_idx = min((chunk_idx + 1) * chunk_size, len(a_prompts))
-        chunk_a = a_prompts[start_idx:end_idx]
-        chunk_b = b_prompts[start_idx:end_idx]
+    # Process all prompts in batches
+    total_batches = (len(a_prompts) + batch_size - 1) // batch_size
+    console.print(f"\nProcessing {len(a_prompts)} prompts in {total_batches} batches")
 
-        console.print(f"\nProcessing chunk {chunk_idx + 1}/{total_chunks}")
-        console.print(f"Tokenizing inputs {start_idx} to {end_idx}...")
+    for batch_idx in range(0, len(a_prompts), batch_size):
+        batch_end = min(batch_idx + batch_size, len(a_prompts))
+        batch_a = a_prompts[batch_idx:batch_end]
+        batch_b = b_prompts[batch_idx:batch_end]
 
-        # Tokenize current chunk
+        batch_num = (batch_idx // batch_size) + 1
+        console.print(
+            f"Processing batch {batch_num}/{total_batches} "
+            f"(size: {len(batch_a)})"
+        )
+
+        # Tokenize current batch with consistent max_length
         a_tokens = tokenizer(
-            chunk_a,
-            padding=True,
+            batch_a,
+            padding="max_length",
             truncation=True,
+            max_length=max_length,
             return_tensors="pt",
-            pad_to_multiple_of=8,
         ).to(model.device)
 
         b_tokens = tokenizer(
-            chunk_b,
-            padding=True,
+            batch_b,
+            padding="max_length",
             truncation=True,
+            max_length=max_length,
             return_tensors="pt",
-            pad_to_multiple_of=8,
         ).to(model.device)
 
-        # Process batches within chunk
-        total_batches = (len(chunk_a) + batch_size - 1) // batch_size
-
-        with torch.no_grad():
-            for i in range(0, len(chunk_a), batch_size):
-                batch_end = min(i + batch_size, len(chunk_a))
-                batch_a = {k: v[i:batch_end] for k, v in a_tokens.items()}
-                batch_b = {k: v[i:batch_end] for k, v in b_tokens.items()}
-
-                batch_num = i // batch_size + 1
-                console.print(
-                    f"Processing batch {batch_num}/{total_batches} "
-                    f"(size: {batch_end - i})"
+        try:
+            with torch.no_grad():
+                # Process batch
+                a_output = model(
+                    **a_tokens, output_hidden_states=True, return_dict=True
+                )
+                b_output = model(
+                    **b_tokens, output_hidden_states=True, return_dict=True
                 )
 
-                try:
-                    # Process batches
-                    a_output = model(
-                        **batch_a, output_hidden_states=True, return_dict=True
-                    )
-                    b_output = model(
-                        **batch_b, output_hidden_states=True, return_dict=True
-                    )
-
-                    # Store hidden states for each layer, converting to float32 immediately
-                    for layer_idx in hidden_layers:
-                        hidden_states[layer_idx].append(
-                            torch.cat(
-                                [
-                                    a_output.hidden_states[layer_idx].to(torch.float32),
-                                    b_output.hidden_states[layer_idx].to(torch.float32),
-                                ],
-                                dim=0,
-                            ).cpu()  # Move to CPU after float32 conversion
+                # Store hidden states for each layer, converting to float32 immediately
+                for layer_idx in hidden_layers:
+                    a_states = a_output.hidden_states[layer_idx].to(torch.float32)
+                    b_states = b_output.hidden_states[layer_idx].to(torch.float32)
+                    
+                    # Debug info
+                    if a_states.shape != b_states.shape:
+                        msg = f"Shape mismatch in layer {layer_idx}"
+                        console.print(f"[yellow]Warning: {msg}[/yellow]")
+                        console.print(
+                            f"A shape: {a_states.shape}, B shape: {b_states.shape}"
                         )
+                    
+                    hidden_states[layer_idx].append(
+                        torch.cat([a_states, b_states], dim=0).cpu()
+                    )
 
-                    console.print("✓ Batch completed")
+            console.print("✓ Batch completed")
 
-                except RuntimeError as e:
-                    if "out of memory" in str(e):
-                        console.print("[red]Out of memory, trying to recover...[/red]")
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                        raise e
-                    raise e
-
-                # Clear some memory
-                del a_output, b_output
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                console.print("[red]Out of memory, trying to recover...[/red]")
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+            raise e
 
-        # Clear chunk tensors
-        del a_tokens, b_tokens
+        # Clear memory
+        del a_tokens, b_tokens, a_output, b_output
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -192,18 +188,41 @@ def read_representations(
     # Process hidden states based on method
     control_vectors = {}
     for layer, states in hidden_states.items():
-        console.print(f"processing layer {layer}: {states.shape}")
+        console.print(f"Processing layer {layer}: {states.shape}")
         # States are already float32, just convert to numpy
         states_np = states.cpu().numpy()
+        
+        # Get dimensions
+        batch_size, seq_len, hidden_dim = states_np.shape
+        
         if method == "pca_diff":
+            # Split into A and B groups while maintaining hidden_dim
+            half_batch = batch_size // 2
+            a_states = states_np[:half_batch].reshape(-1, hidden_dim)  # (batch/2 * seq_len, hidden_dim)
+            b_states = states_np[half_batch:].reshape(-1, hidden_dim)  # (batch/2 * seq_len, hidden_dim)
+            
             # Compute difference between A and B examples
-            diff = states_np[::2] - states_np[1::2]
-            # Use first principal component as control vector
-            u, _, _ = np.linalg.svd(diff, full_matrices=False)
-            control_vectors[layer] = u[:, 0]
+            diff = a_states - b_states  # Shape: (batch/2 * seq_len, hidden_dim)
+            
+            # Compute SVD on the transposed difference matrix to get hidden_dim components
+            u, s, vh = np.linalg.svd(diff.T, full_matrices=False)
+            # Take the first component, which will have shape (hidden_dim,)
+            control_vector = u[:, 0]
+            
         else:  # pca_center
-            # Use first principal component directly
-            u, _, _ = np.linalg.svd(states_np, full_matrices=False)
-            control_vectors[layer] = u[:, 0]
+            # Reshape to (batch * seq_len, hidden_dim)
+            states_2d = states_np.reshape(-1, hidden_dim)
+            # Compute SVD on the transposed states to get hidden_dim components
+            u, s, vh = np.linalg.svd(states_2d.T, full_matrices=False)
+            # Take the first component
+            control_vector = u[:, 0]
+        
+        console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
+        # Verify we got the right dimension
+        assert control_vector.shape[0] == hidden_dim, (
+            f"Control vector dimension mismatch: got {control_vector.shape[0]}, "
+            f"expected {hidden_dim}"
+        )
+        control_vectors[layer] = control_vector
 
     return control_vectors

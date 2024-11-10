@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Literal, Sequence, Dict, Any
+from dataclasses import dataclass, asdict
+from typing import List, Optional
 
 
 @dataclass
@@ -12,22 +12,12 @@ class Message:
         content: The content of the message
     """
 
-    role: Literal["system", "user", "assistant"]
+    role: str
     content: str
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Message":
-        """Create a Message instance from a dictionary."""
-        return cls(role=data["role"], content=data["content"])
-
-    def to_llama_string(self) -> str:
-        """Convert message to Llama chat format."""
-        if self.role == "system":
-            return f"<s>[INST] <<SYS>>\n{self.content}\n<</SYS>>\n\n"
-        elif self.role == "user":
-            return f"[INST] {self.content} [/INST]"
-        else:  # assistant
-            return f"{self.content} </s>"
+    def to_dict(self) -> dict:
+        """Convert message to dictionary."""
+        return asdict(self)
 
 
 @dataclass
@@ -38,21 +28,30 @@ class DatasetEntry:
     Attributes:
         a: First sequence of messages
         b: Second sequence of messages
+        a_trait: Trait for the first sequence
+        b_trait: Trait for the second sequence
     """
 
-    a: Sequence[Message]
-    b: Sequence[Message]
+    a: List[Message]
+    b: List[Message]
+    a_trait: Optional[str] = None
+    b_trait: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        """Convert entry to dictionary."""
+        return {
+            "a": [m.to_dict() for m in self.a],
+            "b": [m.to_dict() for m in self.b],
+            "a_trait": self.a_trait,
+            "b_trait": self.b_trait,
+        }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DatasetEntry":
+    def from_dict(cls, data: dict) -> "DatasetEntry":
         """Create a DatasetEntry instance from a dictionary."""
         return cls(
-            a=[Message.from_dict(m) for m in data["a"]],
-            b=[Message.from_dict(m) for m in data["b"]]
+            a=[Message(**m) for m in data["a"]],
+            b=[Message(**m) for m in data["b"]],
+            a_trait=data.get("a_trait"),
+            b_trait=data.get("b_trait"),
         )
-
-    def to_llama_strings(self) -> tuple[str, str]:
-        """Convert both message sequences to Llama chat format."""
-        a_string = "".join(msg.to_llama_string() for msg in self.a)
-        b_string = "".join(msg.to_llama_string() for msg in self.b)
-        return a_string, b_string

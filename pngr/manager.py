@@ -179,20 +179,29 @@ class PngrManager:
         if vector_name is not None:
             if vector_name not in self.vectors:
                 raise ValueError(
-                    f"Vector {vector_name} not found. Available vectors: "
+                    f"Vector '{vector_name}' not found. Available vectors: "
                     f"{list(self.vectors.keys())}"
                 )
+            console.print(f"Using vector '{vector_name}' with strength {coeff}")
             self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
         else:
             self.controllable_model.reset()
 
         # Generate
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        outputs = self.controllable_model.generate(
-            **inputs, max_new_tokens=kwargs.pop("max_new_tokens", 50), **kwargs
-        )
+        try:
+            outputs = self.controllable_model.generate(
+                **inputs,
+                max_new_tokens=kwargs.pop("max_new_tokens", 50),
+                pad_token_id=self.tokenizer.eos_token_id,
+                **kwargs
+            )
+        except Exception as e:
+            console.print(f"[red]Error during generation: {str(e)}[/red]")
+            raise
 
-        return self.tokenizer.decode(outputs[0])
+        # Decode and return
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def list_vectors(self) -> list[str]:
         """Get names of available vectors."""

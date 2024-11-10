@@ -48,12 +48,10 @@ def create_personality_prompts(
     return prompts
 
 
-def save_prompts(
-    prompts: Sequence[DatasetEntry], output_file: str = "vector_dataset.jsonl"
-):
+def save_prompts(prompts: Sequence[DatasetEntry], output_file: str):
     """Save prompts to JSONL file."""
     import json
 
     with open(output_file, "w", encoding="utf-8") as f:
         for prompt in prompts:
-            f.write(json.dumps(prompt) + "\n")
+            f.write(json.dumps(prompt.to_dict()) + "\n")

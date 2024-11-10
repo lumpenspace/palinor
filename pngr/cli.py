@@ -33,8 +33,16 @@ class PngrShell:
         prompts = create_dataset.create_personality_prompts(
             template_path, a_trait, b_trait
         )
+        
+        # Save to ~/.pngr/datasets/
+        datasets_dir = Path.home() / ".pngr" / "datasets"
+        datasets_dir.mkdir(parents=True, exist_ok=True)
+        output_path = datasets_dir / f"{name}.jsonl"
+        
+        create_dataset.save_prompts(prompts, str(output_path))
         self.datasets[name] = prompts
         console.print(f"[green]Created dataset '{name}' with {len(prompts)} prompts[/green]")
+        console.print(f"[green]Saved to {output_path}[/green]")
     
     def list_datasets(self):
         """List all available datasets."""
@@ -98,16 +106,21 @@ def pngr():
 @click.argument("a_trait")
 @click.argument("b_trait")
 @click.option("--templates", "-t", type=click.Path(exists=True))
-@click.option("--output", "-o", type=str, default="vector_dataset.jsonl")
-def dataset(name: str, a_trait: str, b_trait: str, 
-           templates: Optional[str], output: str) -> None:
+def dataset(name: str, a_trait: str, b_trait: str, templates: Optional[str]) -> None:
     """Create a dataset of personality prompts."""
+    # Create datasets directory
+    datasets_dir = Path.home() / ".pngr" / "datasets"
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+    
     template_path = (
         templates or Path(__file__).parent.parent / "dataset_templates/alphapenger.yaml"
     )
     prompts = create_dataset.create_personality_prompts(str(template_path), a_trait, b_trait)
-    create_dataset.save_prompts(prompts, output)
-    console.print(f"[green]Dataset saved to {output}[/green]")
+    
+    # Save to ~/.pngr/datasets/
+    output_path = datasets_dir / f"{name}.jsonl"
+    create_dataset.save_prompts(prompts, str(output_path))
+    console.print(f"[green]Dataset saved to {output_path}[/green]")
 
 
 @click.command()
