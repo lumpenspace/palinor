@@ -1,5 +1,4 @@
 # Pngr
-# Pngr Application
 
 Pngr is a powerful tool designed to facilitate the generation of datasets, training of control vectors, and inference with dynamically injected control vectors. This document outlines the core functionalities and how to use them effectively.
 
@@ -40,3 +39,8 @@ Pngr supports dynamic injection of control vectors during inference, allowing re
 1. Start the interactive shell using `pngr shell`.
 2. Load the desired model and control vectors.
 3. Perform inference by injecting different control vectors as needed to steer the output dynamically.
+
+## Acknowledgements
+
+This project was inspired by the work of [vgel](https://x.com/vooooooogel), [Repeng](https://github.com/vgel/repeng),
+one of the most influential yet least cited projects in the field of controllable generation.
