@@ -31,6 +31,13 @@ def dataset(templates: str, a: str, b: str):
     create_dataset.save_prompts(prompts, output_file)
 
 
+@click.command()
+@click.option("--dataset", "-d", type=click.Path(exists=True))
+def train(dataset: str):
+    """Train a control vector."""
+    pass
+
+
 pngr.add_command(dataset)
 if __name__ == "__main__":
     pngr()
