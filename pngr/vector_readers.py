@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
-
+from .message_template import message_template
 from .ControllableModel import ControllableModel
 from .Message import Message, DatasetEntry
 from rich.console import Console
@@ -17,17 +17,9 @@ console = Console()
 
 def format_messages(messages: Sequence[Message]) -> str:
     """Format a list of messages into a single string using Llama chat format."""
-    formatted: list[str] = []
-    for msg in messages:
-        if msg.role == "system":
-            formatted.append(f"<s>[INST] <<SYS>>\n{msg.content}\n<</SYS>>\n\n")
-        elif msg.role == "user":
-            formatted.append(f"{msg.content} [/INST]")
-        elif msg.role == "assistant":
-            formatted.append(f"{msg.content} </s>")
-        else:
-            formatted.append(msg.content)
-    return "".join(formatted)
+    return message_template(
+        system_message=messages[0].content, prompt=messages[1].content
+    )
 
 
 def get_batch_hidden_states(
@@ -196,7 +188,7 @@ def read_representations(
         states_np = states.cpu().numpy()
 
         # Get dimensions
-        batch_size, seq_len, hidden_dim = states_np.shape
+        batch_size, _, hidden_dim = states_np.shape
 
         if method == "pca_diff":
             # Split into A and B groups while maintaining hidden_dim

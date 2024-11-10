@@ -119,5 +119,4 @@ class ControlVector:
             pickle.dump(
                 {"poles": self.poles, "model_type": self.model_type},
                 f,
-                
             )

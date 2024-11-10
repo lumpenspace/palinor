@@ -18,6 +18,7 @@ import dotenv
 
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
+from .message_template import message_template
 from . import create_dataset
 
 
@@ -190,9 +191,9 @@ class PngrManager:
             console.print(f"Using vector '{vector_name}' with strength {coeff}")
             self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
         # Format prompt using Llama chat format with system message
-        formatted_prompt = (
-            "[INST] <<SYS>>Answer directly and concisely.<</SYS>>\n\n"
-            f"{prompt} [/INST]"
+        formatted_prompt = message_template(
+            prompt,
+            system_message="you are a helpful AI assistant for travel tips and recommendations",
         )
 
         # Extract generation parameters
@@ -298,13 +299,7 @@ class PngrManager:
             self.controllable_model.reset()
 
         # Format prompts using Llama chat format with system message
-        formatted_prompts = [
-            "<s>[INST] <<SYS>>\n"
-            "You are a helpful AI assistant. Answer directly and concisely.\n"
-            "<</SYS>>\n\n"
-            f"{p} [/INST]"
-            for p in prompts
-        ]
+        formatted_prompts = [message_template(p.content) for p in prompts]
 
         # Tokenize all prompts
         inputs = self.tokenizer(
