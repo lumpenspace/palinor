@@ -29,7 +29,7 @@ class ControlLayer(torch.nn.Module):
 
     def forward(
         self, *args: Any, **kwargs: Any
-    ) -> Any | tuple[Any | torch.Tensor, *tuple[Any, ...]] | torch.Tensor:
+    ) -> Any | tuple[:Any | torch.Tensor, *tuple[Any, ...]] | torch.Tensor:
         """
         Forward pass through the model block, with control applied.
         """
