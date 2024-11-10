@@ -40,7 +40,7 @@ def create_personality_prompts(
                     ],
                     b=[
                         Message(role="system", content=system2),
-                        Messzage(role="user", content=user_prompt),
+                        Message(role="user", content=user_prompt),
                     ],
                 )
             )
