@@ -16,14 +16,18 @@ console = Console()
 
 
 def format_messages(messages: Sequence[Message]) -> str:
-    """Format a list of messages into a single string."""
+    """Format a list of messages into a single string using Llama chat format."""
     formatted: list[str] = []
     for msg in messages:
         if msg.role == "system":
-            formatted.append(f"System: {msg.content}")
+            formatted.append(f"<s>[INST] <<SYS>>\n{msg.content}\n<</SYS>>\n\n")
+        elif msg.role == "user":
+            formatted.append(f"{msg.content} [/INST]")
+        elif msg.role == "assistant":
+            formatted.append(f"{msg.content} </s>")
         else:
             formatted.append(msg.content)
-    return " ".join(formatted)
+    return "".join(formatted)
 
 
 def get_batch_hidden_states(
@@ -92,8 +96,7 @@ def get_batch_hidden_states(
 
         batch_num = (batch_idx // batch_size) + 1
         console.print(
-            f"Processing batch {batch_num}/{total_batches} "
-            f"(size: {len(batch_a)})"
+            f"Processing batch {batch_num}/{total_batches} " f"(size: {len(batch_a)})"
         )
 
         # Tokenize current batch with consistent max_length
@@ -127,7 +130,7 @@ def get_batch_hidden_states(
                 for layer_idx in hidden_layers:
                     a_states = a_output.hidden_states[layer_idx].to(torch.float32)
                     b_states = b_output.hidden_states[layer_idx].to(torch.float32)
-                    
+
                     # Debug info
                     if a_states.shape != b_states.shape:
                         msg = f"Shape mismatch in layer {layer_idx}"
@@ -135,7 +138,7 @@ def get_batch_hidden_states(
                         console.print(
                             f"A shape: {a_states.shape}, B shape: {b_states.shape}"
                         )
-                    
+
                     hidden_states[layer_idx].append(
                         torch.cat([a_states, b_states], dim=0).cpu()
                     )
@@ -191,24 +194,28 @@ def read_representations(
         console.print(f"Processing layer {layer}: {states.shape}")
         # States are already float32, just convert to numpy
         states_np = states.cpu().numpy()
-        
+
         # Get dimensions
         batch_size, seq_len, hidden_dim = states_np.shape
-        
+
         if method == "pca_diff":
             # Split into A and B groups while maintaining hidden_dim
             half_batch = batch_size // 2
-            a_states = states_np[:half_batch].reshape(-1, hidden_dim)  # (batch/2 * seq_len, hidden_dim)
-            b_states = states_np[half_batch:].reshape(-1, hidden_dim)  # (batch/2 * seq_len, hidden_dim)
-            
+            a_states = states_np[:half_batch].reshape(
+                -1, hidden_dim
+            )  # (batch/2 * seq_len, hidden_dim)
+            b_states = states_np[half_batch:].reshape(
+                -1, hidden_dim
+            )  # (batch/2 * seq_len, hidden_dim)
+
             # Compute difference between A and B examples
             diff = a_states - b_states  # Shape: (batch/2 * seq_len, hidden_dim)
-            
+
             # Compute SVD on the transposed difference matrix to get hidden_dim components
             u, s, vh = np.linalg.svd(diff.T, full_matrices=False)
             # Take the first component, which will have shape (hidden_dim,)
             control_vector = u[:, 0]
-            
+
         else:  # pca_center
             # Reshape to (batch * seq_len, hidden_dim)
             states_2d = states_np.reshape(-1, hidden_dim)
@@ -216,7 +223,7 @@ def read_representations(
             u, s, vh = np.linalg.svd(states_2d.T, full_matrices=False)
             # Take the first component
             control_vector = u[:, 0]
-        
+
         console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
         # Verify we got the right dimension
         assert control_vector.shape[0] == hidden_dim, (

@@ -2,16 +2,21 @@
 Manager class for pngr operations.
 """
 
+from ctypes import cast
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union, List
+from sklearn import pipeline
 import torch
 from rich.console import Console
 from transformers import (
+    pipeline,
     AutoModelForCausalLM,
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizerBase,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
 )
 from huggingface_hub import login
 import dotenv
@@ -56,7 +61,10 @@ class PngrManager:
         self.cache_dir = Path(cache_dir or os.path.expanduser("~/.pngr"))
         self.vectors_dir = self.cache_dir / "vectors" / model_name.replace("/", "_")
         self.models_dir = self.cache_dir / "models"
-        self.device = device or "auto"
+
+        # Set device - prefer CUDA if available
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        console.print(f"Using device: {self.device}")
 
         # Create cache directories
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -69,7 +77,7 @@ class PngrManager:
 
         # Load model and tokenizer
         self.model = self._load_model()
-        self.tokenizer = self._load_tokenizer()
+        self.tokenizer: PreTrainedTokenizerBase = self._load_tokenizer()
 
         # Create controllable model
         self.layer_ids = layer_ids or [-1, -2, -3]
@@ -84,13 +92,16 @@ class PngrManager:
 
     def _load_model(self) -> PreTrainedModel:
         """Load or download the model."""
-        return AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             cache_dir=str(self.models_dir),
-            torch_dtype=torch.float16,
-            # Remove device_map if you don't want to use accelerate
-            # device_map=self.device,
+            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+            device_map="auto" if self.device == "cuda" else None,
         )
+
+        if self.device == "cuda":
+            model = model.cuda()
+        return model
 
     def _load_tokenizer(self) -> PreTrainedTokenizerBase:
         """Load or download the tokenizer."""
@@ -175,7 +186,6 @@ class PngrManager:
         Returns:
             Generated text
         """
-        # Set up control if requested
         if vector_name is not None:
             if vector_name not in self.vectors:
                 raise ValueError(
@@ -187,25 +197,52 @@ class PngrManager:
         else:
             self.controllable_model.reset()
 
-        # Generate
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        # Format prompt using Llama chat format with system message
+        formatted_prompt = (
+            "[INST] <<SYS>>Answer directly and concisely.<</SYS>>\n\n"
+            f"{prompt} [/INST]"
+        )
+
+        # Extract generation parameters
+        max_new_tokens = kwargs.pop("max_new_tokens", 50)
+
+        # Create inputs
+        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(
+            self.model.device
+        )
+
         try:
+            # Generate directly using the model
             outputs = self.controllable_model.generate(
                 **inputs,
-                max_new_tokens=kwargs.pop("max_new_tokens", 50),
+                max_new_tokens=max_new_tokens,
                 pad_token_id=self.tokenizer.eos_token_id,
-                **kwargs
+                **kwargs,
             )
+
+            # Decode the output
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+            # Clean up the response
+            if response.startswith(formatted_prompt):
+                response = response[len(formatted_prompt) :].strip()
+
+            # Escape any rich markup characters
+            response = response.replace("[", "\\[").replace("]", "\\]")
+
+            return response
+
         except Exception as e:
             console.print(f"[red]Error during generation: {str(e)}[/red]")
-            raise
-
-        # Decode and return
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            return f"Error during generation: {str(e)}"
 
     def list_vectors(self) -> list[str]:
         """Get names of available vectors."""
         return list(self.vectors.keys())
+
+    def reset(self):
+        """Reset the controllable model."""
+        self.controllable_model.reset()
 
     def generate_tweet(
         self,
@@ -228,14 +265,21 @@ class PngrManager:
         Returns:
             Generated tweet text
         """
+        # Set max_new_tokens based on max_length
         kwargs["max_new_tokens"] = kwargs.get("max_new_tokens", max_length // 4)
-        output = self.generate(prompt, vector_name, coeff, **kwargs)
 
-        # Ensure output fits in a tweet
-        if len(output) > max_length:
-            output = output[: max_length - 3] + "..."
+        try:
+            output = self.generate(prompt, vector_name, coeff, **kwargs)
 
-        return output
+            # Ensure output fits in a tweet
+            if len(output) > max_length:
+                output = output[: max_length - 3] + "..."
+
+            return output
+
+        except Exception as e:
+            console.print(f"[red]Error generating tweet: {str(e)}[/red]")
+            return f"Error generating tweet: {str(e)}"
 
     def batch_generate(
         self,
@@ -261,17 +305,34 @@ class PngrManager:
         else:
             self.controllable_model.reset()
 
+        # Format prompts using Llama chat format with system message
+        formatted_prompts = [
+            "<s>[INST] <<SYS>>\n"
+            "You are a helpful AI assistant. Answer directly and concisely.\n"
+            "<</SYS>>\n\n"
+            f"{p} [/INST]"
+            for p in prompts
+        ]
+
         # Tokenize all prompts
-        inputs = self.tokenizer(prompts, padding=True, return_tensors="pt").to(
-            self.model.device
-        )
+        inputs = self.tokenizer(
+            formatted_prompts, padding=True, return_tensors="pt"
+        ).to(self.model.device)
 
         # Generate
         outputs = self.controllable_model.generate(
-            **inputs, max_new_tokens=kwargs.pop("max_new_tokens", 50), **kwargs
+            **inputs,
+            max_new_tokens=kwargs.pop("max_new_tokens", 50),
+            pad_token_id=self.tokenizer.eos_token_id,
+            **kwargs,
         )
 
-        return [
-            self.tokenizer.decode(output, skip_special_tokens=True)
-            for output in outputs
-        ]
+        # Decode and clean responses
+        responses = []
+        for output, prompt in zip(outputs, prompts):
+            response = self.tokenizer.decode(output, skip_special_tokens=True)
+            if response.startswith(prompt):
+                response = response[len(prompt) :].strip()
+            responses.append(response.strip())
+
+        return responses
