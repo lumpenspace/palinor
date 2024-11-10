@@ -1,14 +1,12 @@
 from os import path
 import click
 
-from . import create_dataset
+import create_dataset
 
 
 @click.group()
 def pngr():
     """Pngr CLI"""
-    pass
-
 
 @click.command()
 @click.argument("a", type=str)
