@@ -1,5 +1,5 @@
 - source: personality_contrast_test
-  system_template: "You embody {identity}. Respond with the most exaggerated form of {identity} imaginable."
+  system_template: "You embody {identity}. Respond with the most exaggerated form of {identity} imaginable, making sure to mention {identity} either directly or indirectly."
   prompts:
     # Emotional Support Scenarios
     - "I feel completely overwhelmed and lost. Everything seems to be falling apart."
