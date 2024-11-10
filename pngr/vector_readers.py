@@ -14,7 +14,7 @@ from transformers.tokenization_utils_base import EncodingFast
 
 from .control import ControllableModel, model_layer_list
 
-ExtractMethod = Literal["pca_diff", "pca_center", "umap"]
+ExtractMethod = Literal["pca_diff", "pca_center"]
 
 
 @dataclasses.dataclass
@@ -77,8 +77,6 @@ def read_representations(
             train = h
             train[::2] -= center
             train[1::2] -= center
-        elif method == "umap":
-            train = h
         else:
             raise ValueError("unknown method " + method)
 
