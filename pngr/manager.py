@@ -5,14 +5,25 @@ Manager class for pngr operations.
 import os
 from pathlib import Path
 from typing import Any, Optional
-
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
+from rich.console import Console
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 from huggingface_hub import login
+import dotenv
 
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
 from . import create_dataset
+
+
+dotenv.load_dotenv()
+
+console = Console()
 
 
 class PngrManager:
@@ -26,8 +37,9 @@ class PngrManager:
         self,
         model_name: str,
         cache_dir: Optional[str] = None,
-        hf_token: Optional[str] = None,
+        hf_token: Optional[str] = os.getenv("HF_TOKEN"),
         layer_ids: Optional[list[int]] = None,
+        device: Optional[str] = None,
     ):
         """
         Initialize the manager.
@@ -37,11 +49,14 @@ class PngrManager:
             cache_dir: Directory to store models and vectors (default: ~/.pngr)
             hf_token: HuggingFace token for gated models
             layer_ids: Which layers to control (default: [-1, -2, -3])
+            device: Device to use for computation (default: auto)
         """
+        console.print(f"Initializing PngrManager for model {model_name}")
         self.model_name = model_name
         self.cache_dir = Path(cache_dir or os.path.expanduser("~/.pngr"))
         self.vectors_dir = self.cache_dir / "vectors" / model_name.replace("/", "_")
         self.models_dir = self.cache_dir / "models"
+        self.device = device or "auto"
 
         # Create cache directories
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -54,9 +69,7 @@ class PngrManager:
 
         # Load model and tokenizer
         self.model = self._load_model()
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, cache_dir=str(self.models_dir)
-        )
+        self.tokenizer = self._load_tokenizer()
 
         # Create controllable model
         self.layer_ids = layer_ids or [-1, -2, -3]
@@ -67,13 +80,24 @@ class PngrManager:
         # Load existing vectors
         self.vectors = self._load_existing_vectors()
 
+        console.print(f"Loaded {len(self.vectors)} vectors")
+
     def _load_model(self) -> PreTrainedModel:
         """Load or download the model."""
         return AutoModelForCausalLM.from_pretrained(
             self.model_name,
             cache_dir=str(self.models_dir),
             torch_dtype=torch.float16,
-            device_map="auto",
+            # Remove device_map if you don't want to use accelerate
+            # device_map=self.device,
+        )
+
+    def _load_tokenizer(self) -> PreTrainedTokenizerBase:
+        """Load or download the tokenizer."""
+        return AutoTokenizer.from_pretrained(
+            self.model_name,
+            cache_dir=str(self.models_dir),
+            padding_side="left",
         )
 
     def _load_existing_vectors(self) -> dict[str, ControlVector]:
@@ -102,6 +126,7 @@ class PngrManager:
         Returns:
             The trained ControlVector
         """
+
         # Create dataset
         template_path = os.path.join(
             os.path.dirname(__file__), "..", "dataset_templates/alphapenger.yaml"
@@ -110,6 +135,9 @@ class PngrManager:
             template_path, a_adjective, b_adjective
         )
 
+        console.print(
+            f"Training vector [green]{name}[/green] with {len(prompts)} prompts"
+        )
         # Train vector
         vector = ControlVector.train(
             model=self.controllable_model,
@@ -119,7 +147,8 @@ class PngrManager:
         )
 
         # Save vector
-        vector_path = self.vectors_dir / f"{name}.pkl"
+        vector_path: Path = self.vectors_dir / f"{name}.pkl"
+        console.print(f"Saving vector to [green]{vector_path}[/green]")
         vector.to_file(str(vector_path))
 
         # Add to loaded vectors
@@ -168,3 +197,72 @@ class PngrManager:
     def list_vectors(self) -> list[str]:
         """Get names of available vectors."""
         return list(self.vectors.keys())
+
+    def generate_tweet(
+        self,
+        prompt: str,
+        vector_name: Optional[str] = None,
+        coeff: float = 1.0,
+        max_length: int = 280,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Generate a Twitter-compatible response.
+
+        Args:
+            prompt: Input text
+            vector_name: Name of vector to use (if any)
+            coeff: Control strength
+            max_length: Maximum tweet length (default: 280)
+            **kwargs: Additional generation parameters
+
+        Returns:
+            Generated tweet text
+        """
+        kwargs["max_new_tokens"] = kwargs.get("max_new_tokens", max_length // 4)
+        output = self.generate(prompt, vector_name, coeff, **kwargs)
+
+        # Ensure output fits in a tweet
+        if len(output) > max_length:
+            output = output[: max_length - 3] + "..."
+
+        return output
+
+    def batch_generate(
+        self,
+        prompts: list[str],
+        vector_name: Optional[str] = None,
+        coeff: float = 1.0,
+        **kwargs: Any,
+    ) -> list[str]:
+        """
+        Generate multiple responses in batch.
+
+        Args:
+            prompts: List of input prompts
+            vector_name: Name of vector to use (if any)
+            coeff: Control strength
+            **kwargs: Additional generation parameters
+
+        Returns:
+            List of generated texts
+        """
+        if vector_name is not None:
+            self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
+        else:
+            self.controllable_model.reset()
+
+        # Tokenize all prompts
+        inputs = self.tokenizer(prompts, padding=True, return_tensors="pt").to(
+            self.model.device
+        )
+
+        # Generate
+        outputs = self.controllable_model.generate(
+            **inputs, max_new_tokens=kwargs.pop("max_new_tokens", 50), **kwargs
+        )
+
+        return [
+            self.tokenizer.decode(output, skip_special_tokens=True)
+            for output in outputs
+        ]

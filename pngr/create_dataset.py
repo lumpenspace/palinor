@@ -3,7 +3,7 @@
 from typing import Any, Sequence
 import yaml
 
-from .Message import DatasetEntry
+from .Message import DatasetEntry, Message
 
 
 def load_yaml_template(file_path: str) -> list[dict[str, Any]]:
@@ -33,16 +33,16 @@ def create_personality_prompts(
 
         for user_prompt in user_prompts:
             prompts.append(
-                {
-                    "a": [
-                        {"role": "system", "content": system1},
-                        {"role": "user", "content": user_prompt},
+                DatasetEntry(
+                    a=[
+                        Message(role="system", content=system1),
+                        Message(role="user", content=user_prompt),
                     ],
-                    "b": [
-                        {"role": "system", "content": system2},
-                        {"role": "user", "content": user_prompt},
+                    b=[
+                        Message(role="system", content=system2),
+                        Message(role="user", content=user_prompt),
                     ],
-                }
+                )
             )
 
     return prompts

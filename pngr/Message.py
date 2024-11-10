@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal, Sequence, Dict, Any
 
 
 @dataclass
@@ -14,6 +14,11 @@ class Message:
 
     role: Literal["system", "user", "assistant"]
     content: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Message":
+        """Create a Message instance from a dictionary."""
+        return cls(role=data["role"], content=data["content"])
 
     def to_llama_string(self) -> str:
         """Convert message to Llama chat format."""
@@ -37,6 +42,14 @@ class DatasetEntry:
 
     a: Sequence[Message]
     b: Sequence[Message]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DatasetEntry":
+        """Create a DatasetEntry instance from a dictionary."""
+        return cls(
+            a=[Message.from_dict(m) for m in data["a"]],
+            b=[Message.from_dict(m) for m in data["b"]]
+        )
 
     def to_llama_strings(self) -> tuple[str, str]:
         """Convert both message sequences to Llama chat format."""

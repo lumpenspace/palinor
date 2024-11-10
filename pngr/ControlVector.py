@@ -1,6 +1,6 @@
 import dataclasses
 import warnings
-from typing import Any
+from typing import Any, Sequence
 import pickle
 
 import numpy as np
@@ -26,7 +26,7 @@ class ControlVector:
         cls,
         model: "PreTrainedModel | ControllableModel",
         tokenizer: PreTrainedTokenizerBase,
-        dataset: list[DatasetEntry],
+        dataset: Sequence[DatasetEntry],
         **kwargs: Any,
     ) -> "ControlVector":
         """
