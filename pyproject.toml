@@ -6,7 +6,7 @@ authors = ["lumpenspace <lumpensapace@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python =  ">=3.10,<4.0"
 pydantic = "^2.8"
 openai = "^1.13.3"
 prompt-toolkit = "^3.0.47"

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import List, Optional, Any
 
 
 @dataclass
@@ -15,7 +15,7 @@ class Message:
     role: str
     content: str
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str]:
         """Convert message to dictionary."""
         return asdict(self)
 
@@ -37,7 +37,7 @@ class DatasetEntry:
     a_trait: Optional[str] = None
     b_trait: Optional[str] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert entry to dictionary."""
         return {
             "a": [m.to_dict() for m in self.a],
@@ -47,7 +47,7 @@ class DatasetEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "DatasetEntry":
+    def from_dict(cls, data: dict[str, Any]) -> "DatasetEntry":
         """Create a DatasetEntry instance from a dictionary."""
         return cls(
             a=[Message(**m) for m in data["a"]],

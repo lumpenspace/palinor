@@ -2,21 +2,16 @@
 Manager class for pngr operations.
 """
 
-from ctypes import cast
 import os
 from pathlib import Path
-from typing import Any, Optional, Union, List
-from sklearn import pipeline
+from typing import Any, Optional
 import torch
 from rich.console import Console
 from transformers import (
-    pipeline,
     AutoModelForCausalLM,
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
 )
 from huggingface_hub import login
 import dotenv
@@ -225,7 +220,7 @@ class PngrManager:
 
             # Clean up the response
             if response.startswith(formatted_prompt):
-                response = response[len(formatted_prompt) :].strip()
+                response = response[len(formatted_prompt):].strip()
 
             # Escape any rich markup characters
             response = response.replace("[", "\\[").replace("]", "\\]")
@@ -332,7 +327,7 @@ class PngrManager:
         for output, prompt in zip(outputs, prompts):
             response = self.tokenizer.decode(output, skip_special_tokens=True)
             if response.startswith(prompt):
-                response = response[len(prompt) :].strip()
+                response = response[len(prompt):].strip()
             responses.append(response.strip())
 
         return responses
