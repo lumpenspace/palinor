@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "pngr"
+version = "0.1.0"
+description = ""
+authors = ["lumpenspace <lumpensapace@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = "^2.8"
+openai = "^1.13.3"
+prompt-toolkit = "^3.0.47"
+pydantic-settings = "^2.3.4"
+docstring-parser = "^0.16"
+python-dotenv = "^1.0.1"
+rich-cli = "^1.8.0"
+pygments = "^2.18.0"
+keyboard = "^0.13.5"
+poetry = "^1.8.3"
+umap = "^0.1.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.2"
+ipykernel = "^6.29.5"
+sphinx = "^7.4.7"
+myst-parser = "^3.0.1"
+sphinx-jsonschema = "^1.19.1"
+coverage = "^7.6.0"
+pytest-asyncio = "^0.23.8"
+
+[tool.coverage.run]
+command_line = "-m pytest"
+
+[tool.coverage.report]
+include = ["llamda_py/*.py"]
+show_missing = true
+
+[tool.poetry.scripts]
+pngr = "pngr.cli:pngr"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

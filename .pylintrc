@@ -1,0 +1,16 @@
+[MASTER]
+ignore-patterns=.*?_test.py
+
+[MESSAGES CONTROL]
+disable=W0621
+
+[FORMAT]
+max-line-length=100
+
+[TYPECHECK]
+ignored-modules=pytest
+ignored-classes=pytest
+
+[VARIABLES]
+# Add this section to ignore unused variables in test files
+dummy-variables-rgx=_.*|dummy|unused.*
