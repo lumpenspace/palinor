@@ -65,7 +65,6 @@ def get_batch_hidden_states(
 
     # Reduce batch size if on CPU
     if model.device.type == "cpu":
-        original_batch_size = batch_size
         batch_size = min(batch_size, 4)  # Even smaller batches for CPU
         console.print(f"Using CPU mode with batch size {batch_size}")
 
@@ -202,7 +201,8 @@ def read_representations(
     control_vectors = {}
     for layer, states in hidden_states.items():
         console.print(f"processing layer {layer}: {states.shape}")
-        states_np = states.cpu().numpy()
+        # Convert to float32 before numpy conversion
+        states_np = states.to(torch.float32).cpu().numpy()
         if method == "pca_diff":
             # Compute difference between A and B examples
             diff = states_np[::2] - states_np[1::2]
