@@ -11,7 +11,6 @@ from .ControlVector import ControlVector
 @click.group()
 def pngr():
     """Pngr CLI"""
-    pass
 
 
 @click.command()

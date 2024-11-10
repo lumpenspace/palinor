@@ -18,6 +18,9 @@ pygments = "^2.18.0"
 keyboard = "^0.13.5"
 poetry = "^1.8.3"
 umap = "^0.1.1"
+torch = "^2.5.1"
+transformers = "^4.46.2"
+scikit-learn = "^1.5.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.2"
