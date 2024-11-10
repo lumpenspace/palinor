@@ -76,7 +76,7 @@ def get_batch_hidden_states(
     total_chunks = (len(a_prompts) + chunk_size - 1) // chunk_size
     hidden_states = {layer_idx: [] for layer_idx in hidden_layers}
 
-    for chunk_idx in range(total_chunks):
+    for chunk_idx in range(3):
         start_idx = chunk_idx * chunk_size
         end_idx = min((chunk_idx + 1) * chunk_size, len(a_prompts))
         chunk_a = a_prompts[start_idx:end_idx]
@@ -84,7 +84,7 @@ def get_batch_hidden_states(
 
         console.print(f"\nProcessing chunk {chunk_idx + 1}/{total_chunks}")
         console.print(f"Tokenizing inputs {start_idx} to {end_idx}...")
-        
+
         # Tokenize current chunk
         a_tokens = tokenizer(
             chunk_a,
@@ -104,19 +104,19 @@ def get_batch_hidden_states(
 
         # Process batches within chunk
         total_batches = (len(chunk_a) + batch_size - 1) // batch_size
-        
+
         with torch.no_grad():
             for i in range(0, len(chunk_a), batch_size):
                 batch_end = min(i + batch_size, len(chunk_a))
                 batch_a = {k: v[i:batch_end] for k, v in a_tokens.items()}
                 batch_b = {k: v[i:batch_end] for k, v in b_tokens.items()}
-                
+
                 batch_num = i // batch_size + 1
                 console.print(
                     f"Processing batch {batch_num}/{total_batches} "
                     f"(size: {batch_end - i})"
                 )
-                
+
                 try:
                     # Process batches
                     a_output = model(
@@ -126,17 +126,20 @@ def get_batch_hidden_states(
                         **batch_b, output_hidden_states=True, return_dict=True
                     )
 
-                    # Store hidden states for each layer
+                    # Store hidden states for each layer, converting to float32 immediately
                     for layer_idx in hidden_layers:
                         hidden_states[layer_idx].append(
-                            torch.cat([
-                                a_output.hidden_states[layer_idx],
-                                b_output.hidden_states[layer_idx]
-                            ], dim=0).cpu()  # Move to CPU immediately
+                            torch.cat(
+                                [
+                                    a_output.hidden_states[layer_idx].to(torch.float32),
+                                    b_output.hidden_states[layer_idx].to(torch.float32),
+                                ],
+                                dim=0,
+                            ).cpu()  # Move to CPU after float32 conversion
                         )
-                    
+
                     console.print("✓ Batch completed")
-                    
+
                 except RuntimeError as e:
                     if "out of memory" in str(e):
                         console.print("[red]Out of memory, trying to recover...[/red]")
@@ -175,17 +178,6 @@ def read_representations(
 ) -> Dict[int, npt.NDArray[np.float64]]:
     """
     Read and process hidden state representations from the model.
-
-    Args:
-        model: Model to get representations from
-        tokenizer: Tokenizer for the model
-        dataset: Dataset to process
-        max_batch_size: Maximum batch size for processing
-        method: Method for computing control vector ("pca_diff" or "pca_center")
-        **kwargs: Additional arguments passed to get_batch_hidden_states
-
-    Returns:
-        Dictionary mapping layer numbers to control vectors
     """
     if isinstance(model, ControllableModel):
         layers = model.layer_ids
@@ -201,8 +193,8 @@ def read_representations(
     control_vectors = {}
     for layer, states in hidden_states.items():
         console.print(f"processing layer {layer}: {states.shape}")
-        # Convert to float32 before numpy conversion
-        states_np = states.to(torch.float32).cpu().numpy()
+        # States are already float32, just convert to numpy
+        states_np = states.cpu().numpy()
         if method == "pca_diff":
             # Compute difference between A and B examples
             diff = states_np[::2] - states_np[1::2]
