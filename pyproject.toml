@@ -19,5 +19,5 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-palinor = "palinor.cli:palinor"
+palinor = "palinor.cli.cli:palinor"
 

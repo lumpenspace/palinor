@@ -282,3 +282,104 @@ class palinorManager:
         except Exception as e:
             console.print(f"[red]Error generating tweet: {str(e)}[/red]")
             return f"Error generating tweet: {str(e)}"
+
+    def interactive_menu(self):
+        """Interactive menu for palinor operations."""
+        console.print(
+            """[bold magenta]
+        ╔═══════════════════════════════════════╗
+        ║             [cyan]P A L I N O R[/cyan]             ║
+        ╚═══════════════════════════════════════╝[/bold magenta]
+        """
+        )
+
+        options = {
+            "1": ("Train new vector", self._interactive_train_vector),
+            "2": ("Generate text", self._interactive_generate),
+            "3": ("Generate tweet", self._interactive_generate_tweet),
+            "4": (
+                "List vectors",
+                lambda: console.print(
+                    f"[green]Available vectors:[/green] {self.list_vectors()}"
+                ),
+            ),
+            "q": ("Quit", lambda: None),
+        }
+
+        while True:
+            console.print("\n[yellow]Available commands:[/yellow]")
+            for key, (desc, _) in options.items():
+                console.print(f"[cyan]{key}[/cyan]: {desc}")
+
+            choice = console.input(
+                "\n[bold blue]Choose an option:[/bold blue] "
+            ).lower()
+
+            if choice == "q":
+                break
+            elif choice in options:
+                options[choice][1]()
+            else:
+                console.print("[red]Invalid option![/red]")
+
+    def _interactive_train_vector(self):
+        """Interactive vector training."""
+        name = console.input("[bold green]Vector name:[/bold green] ")
+        a_trait = console.input("[bold green]First personality trait:[/bold green] ")
+        b_trait = console.input("[bold green]Second personality trait:[/bold green] ")
+
+        self.train_vector(name, a_trait, b_trait)
+
+    def _interactive_generate(self):
+        """Interactive text generation."""
+        prompt = console.input("[bold green]Enter prompt:[/bold green] ")
+
+        vectors = self.list_vectors()
+        if vectors:
+            use_vector = (
+                console.input("[bold green]Use a vector? (y/n):[/bold green] ").lower()
+                == "y"
+            )
+            if use_vector:
+                console.print(f"[cyan]Available vectors:[/cyan] {vectors}")
+                vector_name = console.input("[bold green]Vector name:[/bold green] ")
+                coeff = float(
+                    console.input(
+                        "[bold green]Control strength (-2 to 2):[/bold green] "
+                    )
+                    or "1.0"
+                )
+                response = self.generate(prompt, vector_name, coeff)
+            else:
+                response = self.generate(prompt)
+        else:
+            response = self.generate(prompt)
+
+        console.print(f"\n[bold cyan]Response:[/bold cyan]\n{response}")
+
+    def _interactive_generate_tweet(self):
+        """Interactive tweet generation."""
+        prompt = console.input("[bold green]Enter prompt:[/bold green] ")
+
+        vectors = self.list_vectors()
+        if vectors:
+            use_vector = (
+                console.input("[bold green]Use a vector? (y/n):[/bold green] ").lower()
+                == "y"
+            )
+            if use_vector:
+                console.print(f"[cyan]Available vectors:[/cyan] {vectors}")
+                vector_name = console.input("[bold green]Vector name:[/bold green] ")
+                coeff = float(
+                    console.input(
+                        "[bold green]Control strength (-2 to 2):[/bold green] "
+                    )
+                    or "1.0"
+                )
+                response = self.generate_tweet(prompt, vector_name, coeff)
+            else:
+                response = self.generate_tweet(prompt)
+        else:
+            response = self.generate_tweet(prompt)
+
+        console.print(f"\n[bold cyan]Tweet:[/bold cyan]\n{response}")
