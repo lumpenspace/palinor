@@ -2,18 +2,20 @@
 
 from typing import Any, Sequence
 import yaml
-
+import os
 from .Message import DatasetEntry, Message
 
 
 def load_yaml_template(file_path: str) -> list[dict[str, Any]]:
     """Load YAML template file."""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(
+        os.path.join("..", "dataset_templates", file_path), "r", encoding="utf-8"
+    ) as f:
         return yaml.safe_load(f)
 
 
 def create_personality_prompts(
-    template_path: str = "dataset_templates/alphapenger.yaml",
+    template_path: str = "alphapenger.yaml",
     a_adjective: str = "good-hearted",
     b_adjective: str = "mischievous",
 ) -> list[DatasetEntry]:
