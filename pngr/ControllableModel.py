@@ -6,7 +6,7 @@ import warnings
 
 import torch
 from transformers import PreTrainedModel
-
+import pngr.ControllableModel
 from pngr.BlockControlParams import BlockControlParams
 
 
@@ -62,13 +62,9 @@ class ControlLayer(torch.nn.Module):
         Forward any unknown attributes to the wrapped block.
         """
         return getattr(self.block, name)
-                warnings.warn(
-                    "Trying to rewrap a wrapped model! Probably not what you want! "
-                    + "Try calling .unwrap first."
-                )
 
     @property
-    def config(self) -> PretrainedConfig:
+    def config(self) -> Any:
         """
         The model's configuration.
         """
@@ -97,7 +93,7 @@ class ControlLayer(torch.nn.Module):
     ) -> None:
         """
         Set a `ControlVector` for the layers this ControlModel handles, with a strength given
-        by `coeff`. (b `coeff` values invert the control vector, e.g. happiness→sadness.)
+        by `coeff`. (negative `coeff` values invert the control vector, e.g. happiness→sadness.)
         `coeff` defaults to `1.0`.
 
         Additional kwargs:
@@ -118,10 +114,13 @@ class ControlLayer(torch.nn.Module):
         """
         Resets the control for all layer_ids, returning the model to base behavior.
         """
+    def reset(self) -> None:
         self.set_raw_control(None)
 
     def set_raw_control(
-        self, control: dict[int, torch.Tensor] | None, **kwargs: Any
+        self,
+        control: dict[int, torch.Tensor] | None = None,
+        **kwargs
     ) -> None:
         """
         Set or remove control parameters to the layers this ControlModel handles.
