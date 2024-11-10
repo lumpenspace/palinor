@@ -41,6 +41,8 @@ def read_representations(
         ]
         | None
     ) = None,
+    max_batch_size: int = 32,  # Added this parameter
+    **kwargs: Any,  # Added this to handle any additional kwargs
 ) -> dict[int, np.ndarray[Any, Any]]:
     """
     Extract the representations based on the contrast dataset.
@@ -48,7 +50,10 @@ def read_representations(
     if not hidden_layers:
         hidden_layers = range(-1, -model.config.num_hidden_layers, -1)
 
-    # normalize the layer indexes if they're b
+    # Use max_batch_size if provided, otherwise use batch_size
+    actual_batch_size = max_batch_size if 'max_batch_size' in kwargs else batch_size
+
+    # normalize the layer indexes if they're negative
     n_layers = len(model_layer_list(model))
     hidden_layers = [i if i >= 0 else n_layers + i for i in hidden_layers]
 
@@ -56,13 +61,11 @@ def read_representations(
     train_strs = [s for ex in inputs for s in (ex.a, ex.b)]
 
     hidden_states = get_batch_hidden_states(
-        model, tokenizer, train_strs, hidden_layers, batch_size
+        model, tokenizer, train_strs, hidden_layers, actual_batch_size
     )
 
     if transform_hiddens is not None:
-        hidden_states: dict[int, np.ndarray[Any, Any]] = transform_hiddens(
-            hidden_states
-        )
+        hidden_states = transform_hiddens(hidden_states)
 
     # get poles for each layer using PCA
     poles: dict[int, np.ndarray[Any, Any]] = {}
@@ -100,8 +103,8 @@ def read_representations(
                 for i in range(0, len(inputs) * 2, 2)
             ]
         )
-        # if the mean of the a's is greater than the mean of the b's, invert the pole§
-        if a_smaller_mean > a_larger_mean:  # type: ignore
+        # if the mean of the a's is greater than the mean of the b's, invert the pole
+        if a_smaller_mean > a_larger_mean:
             poles[layer] *= -1
 
     return poles
