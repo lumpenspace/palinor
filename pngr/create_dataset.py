@@ -1,13 +1,12 @@
 """Create a dataset of polar prompts."""
 
-from typing import Any, Dict, List
-
+from typing import Any, Sequence
 import yaml
 
 from .Message import DatasetEntry
 
 
-def load_yaml_template(file_path: str) -> List[Dict[str, Any]]:
+def load_yaml_template(file_path: str) -> list[dict[str, Any]]:
     """Load YAML template file."""
     with open(file_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -17,7 +16,7 @@ def create_personality_prompts(
     template_path: str = "dataset_templates/alphapenger.yaml",
     a_adjective: str = "good-hearted",
     b_adjective: str = "mischievous",
-) -> List[DatasetEntry]:
+) -> list[DatasetEntry]:
     """Create prompts interpolated with two different personalities."""
 
     templates = load_yaml_template(template_path)
@@ -50,7 +49,7 @@ def create_personality_prompts(
 
 
 def save_prompts(
-    prompts: List[Dict[str, str]], output_file: str = "vector_dataset.jsonl"
+    prompts: Sequence[DatasetEntry], output_file: str = "vector_dataset.jsonl"
 ):
     """Save prompts to JSONL file."""
     import json
