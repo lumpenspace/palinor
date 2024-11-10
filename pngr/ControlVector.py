@@ -1,11 +1,11 @@
 import dataclasses
-import warnings
-from typing import Any, Sequence
 import pickle
+import warnings
+from typing import Any, Dict, Sequence
 
 import numpy as np
 import torch
-from transformers import PreTrainedTokenizerBase, PreTrainedModel
+from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from pngr.ControllableModel import ControllableModel
 from pngr.Message import DatasetEntry
@@ -45,7 +45,7 @@ class ControlVector:
             ControlVector: The trained vector.
         """
         with torch.inference_mode():
-            poles = read_representations(
+            poles: Dict[int, np.ndarray[Any, Any]] = read_representations(
                 model,
                 tokenizer,
                 dataset,

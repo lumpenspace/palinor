@@ -2,9 +2,8 @@
 Utilities for reading and processing control vectors.
 """
 
-from typing import Any, Literal, Sequence, Union, Dict
+from typing import Any, Sequence, Union, Dict
 import numpy as np
-import numpy.typing as npt
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from .message_template import message_template
@@ -164,9 +163,7 @@ def read_representations(
     tokenizer: PreTrainedTokenizerBase,
     dataset: Sequence[DatasetEntry],
     max_batch_size: int = 32,
-    method: Literal["pca_diff", "pca_center"] = "pca_diff",
-    **kwargs: Any,
-) -> Dict[int, npt.NDArray[np.float64]]:
+) -> Dict[int, np.ndarray[Any, Any]]:
     """
     Read and process hidden state representations from the model.
     """
@@ -188,33 +185,14 @@ def read_representations(
         states_np = states.cpu().numpy()
 
         # Get dimensions
-        batch_size, _, hidden_dim = states_np.shape
+        _, _, hidden_dim = states_np.shape
 
-        if method == "pca_diff":
-            # Split into A and B groups while maintaining hidden_dim
-            half_batch = batch_size // 2
-            a_states = states_np[:half_batch].reshape(
-                -1, hidden_dim
-            )  # (batch/2 * seq_len, hidden_dim)
-            b_states = states_np[half_batch:].reshape(
-                -1, hidden_dim
-            )  # (batch/2 * seq_len, hidden_dim)
-
-            # Compute difference between A and B examples
-            diff = a_states - b_states  # Shape: (batch/2 * seq_len, hidden_dim)
-
-            # Compute SVD on the transposed difference matrix to get hidden_dim components
-            u, s, vh = np.linalg.svd(diff.T, full_matrices=False)
-            # Take the first component, which will have shape (hidden_dim,)
-            control_vector = u[:, 0]
-
-        else:  # pca_center
-            # Reshape to (batch * seq_len, hidden_dim)
-            states_2d = states_np.reshape(-1, hidden_dim)
-            # Compute SVD on the transposed states to get hidden_dim components
-            u, s, vh = np.linalg.svd(states_2d.T, full_matrices=False)
-            # Take the first component
-            control_vector = u[:, 0]
+        # Reshape to (batch * seq_len, hidden_dim)
+        states_2d = states_np.reshape(-1, hidden_dim)
+        # Compute SVD on the transposed states to get hidden_dim components
+        u, _, _ = np.linalg.svd(states_2d.T, full_matrices=False)
+        # Take the first component
+        control_vector = u[:, 0]
 
         console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
         # Verify we got the right dimension

@@ -193,7 +193,9 @@ class PngrManager:
                 )
             console.print(f"Using vector '{vector_name}' with strength {coeff}")
             self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
-        # Format prompt using Llama chat format with system message
+        else:
+            console.print("No vector specified, using default model")
+
         formatted_prompt = message_template(
             prompt,
             system_message="you are a helpful AI assistant",
