@@ -1,4 +1,4 @@
-from typing import Any, Union, Tuple
+from typing import Any
 
 import torch
 
@@ -29,7 +29,7 @@ class ControlLayer(torch.nn.Module):
 
     def forward(
         self, *args: Any, **kwargs: Any
-    ) -> Any | tuple[:Any | torch.Tensor, *tuple[Any, ...]] | torch.Tensor:
+    ) -> Any:
         """
         Forward pass through the model block, with control applied.
         """
@@ -52,9 +52,7 @@ class ControlLayer(torch.nn.Module):
 
         norm_pre = torch.norm(modified, dim=-1, keepdim=True)
 
-        # we should ignore the padding tokens when doing the activation addition
-        # mask has ones for non padding tokens and zeros at padding tokens.
-        # only tested this on left padding
+        # Handle padding tokens in activation addition
         if "position_ids" in kwargs:
             pos = kwargs["position_ids"]
             zero_indices = (pos == 0).cumsum(1).argmax(1, keepdim=True)

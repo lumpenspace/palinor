@@ -5,7 +5,6 @@ import pickle
 
 import numpy as np
 import torch
-import code
 from transformers import PreTrainedTokenizerBase, PreTrainedModel
 
 from pngr.ControllableModel import ControllableModel
@@ -33,14 +32,12 @@ class ControlVector:
         Train a ControlVector for a given model and tokenizer using the provided dataset.
 
         Args:
-            model (PreTrainedModel | ControlModel): The model to train against.
-            tokenizer (PreTrainedTokenizerBase): The tokenizer to tokenize the dataset.
-            dataset (list[DatasetEntry]): The dataset used for training.
+            model: The model to train against.
+            tokenizer: The tokenizer to tokenize the dataset.
+            dataset: The dataset used for training.
             **kwargs: Additional keyword arguments.
-                max_batch_size (int, optional): The maximum batch size for training.
-                    Defaults to 32. Try reducing this if you're running out of memory.
-                method (str, optional): The training method to use. Can be either
-                    "pca_diff" or "pca_center". Defaults to "pca_diff".
+                max_batch_size (int): Maximum batch size for training (default: 32).
+                method (str): Training method, "pca_diff" or "pca_center" (default: "pca_diff").
 
         Returns:
             ControlVector: The trained vector.
@@ -57,13 +54,13 @@ class ControlVector:
     def _helper_combine(
         self, other: "ControlVector", other_coeff: float
     ) -> "ControlVector":
+        """Helper method for vector arithmetic operations."""
         if self.model_type != other.model_type:
             warnings.warn(
                 "Trying to add vectors with mismatched model_types together, "
                 + "this may produce unexpected results."
             )
 
-        model_type = self.model_type
         poles: dict[int, np.ndarray[Any, Any]] = {}
         for layer in self.poles:
             poles[layer] = self.poles[layer]
@@ -73,7 +70,7 @@ class ControlVector:
                 poles[layer] = poles[layer] + other_layer
             else:
                 poles[layer] = other_layer
-        return ControlVector(model_type=model_type, poles=poles)
+        return ControlVector(model_type=self.model_type, poles=poles)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ControlVector):
@@ -85,28 +82,20 @@ class ControlVector:
             return False
         if self.poles.keys() != other.poles.keys():
             return False
-        for k, v in self.poles.items():
-            if (v != other.poles[k]).any():
-                return False
-        return True
+        return all((self.poles[k] == other.poles[k]).all() for k in self.poles)
 
     def __add__(self, other: "ControlVector") -> "ControlVector":
         return self._helper_combine(other, 1)
 
     def __sub__(self, other: "ControlVector") -> "ControlVector":
-
         return self._helper_combine(other, -1)
 
     def __neg__(self) -> "ControlVector":
-        poles: dict[int, np.ndarray[Any, Any]] = {}
-        for layer in self.poles:
-            poles[layer] = -self.poles[layer]
+        poles = {layer: -self.poles[layer] for layer in self.poles}
         return ControlVector(model_type=self.model_type, poles=poles)
 
     def __mul__(self, other: int | float | np.int_ | np.float32) -> "ControlVector":
-        poles: dict[int, np.ndarray[Any, Any]] = {}
-        for layer in self.poles:
-            poles[layer] = other * self.poles[layer]
+        poles = {layer: other * self.poles[layer] for layer in self.poles}
         return ControlVector(model_type=self.model_type, poles=poles)
 
     def __rmul__(self, other: int | float | np.int_ | np.float32) -> "ControlVector":
