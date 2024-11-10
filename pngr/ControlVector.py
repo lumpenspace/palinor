@@ -5,7 +5,8 @@ import pickle
 
 import numpy as np
 import torch
-from transformers import PreTrainedModel, PreTrainedTokenizerBase
+import code
+from transformers import PreTrainedTokenizerBase, PreTrainedModel
 
 from pngr.ControllableModel import ControllableModel
 from pngr.vector_readers import DatasetEntry, read_representations
