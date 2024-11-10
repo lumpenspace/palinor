@@ -2,7 +2,7 @@ from typing import Any
 
 import torch
 
-from pngr.BlockControlParams import BlockControlParams
+from .BlockControlParams import BlockControlParams
 
 
 class ControlLayer(torch.nn.Module):
@@ -27,9 +27,7 @@ class ControlLayer(torch.nn.Module):
         """
         self.set_control(BlockControlParams.default())
 
-    def forward(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """
         Forward pass through the model block, with control applied.
         """
@@ -50,10 +48,10 @@ class ControlLayer(torch.nn.Module):
         if len(control.shape) == 1:
             # Reshape from (hidden_dim,) to (1, 1, hidden_dim)
             control = control.reshape(1, 1, -1)
-        
+
         # Get target shape for broadcasting
         batch_size, seq_len, hidden_dim = modified.shape
-        
+
         # Expand control to match all dimensions
         if control.shape[0] == 1:
             control = control.expand(batch_size, -1, -1)
@@ -82,11 +80,7 @@ class ControlLayer(torch.nn.Module):
             pos = kwargs["position_ids"]
             zero_indices = (pos == 0).cumsum(1).argmax(1, keepdim=True)
             col_indices = torch.arange(pos.size(1), device=pos.device).unsqueeze(0)
-            mask = (
-                (col_indices >= zero_indices)
-                .float()
-                .reshape(batch_size, seq_len, 1)
-            )
+            mask = (col_indices >= zero_indices).float().reshape(batch_size, seq_len, 1)
             mask = mask.to(modified.dtype).to(modified.device)
         else:
             mask = torch.ones_like(modified[..., :1])

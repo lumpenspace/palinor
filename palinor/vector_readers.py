@@ -2,13 +2,12 @@
 Utilities for reading and processing control vectors.
 """
 
-from typing import Any, Literal, Sequence, Union, Dict, Optional
+from typing import Any, Literal, Sequence, Union, Dict
 import math
 import torch
 import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from rich.console import Console
-from tqdm import tqdm
 
 from .ControllableModel import ControllableModel
 from .Message import Message, DatasetEntry
@@ -40,23 +39,26 @@ def generate_response(
     """Generate model response for a sequence of messages."""
     input_text = format_messages(messages)
     tokens = tokenizer(input_text, return_tensors="pt").to(device)
-    
+
     with torch.inference_mode():
         output = model.generate(
-            **tokens,
+            input_ids=tokens.input_ids,
+            attention_mask=tokens.attention_mask,
             max_new_tokens=100,
             pad_token_id=tokenizer.eos_token_id,
             do_sample=True,
             temperature=0.7,
-            top_p=0.9
+            top_p=0.9,
         )
         response = tokenizer.decode(output[0], skip_special_tokens=True)
-        response = response[len(input_text):].strip()
-    
+        response = response[len(input_text) :].strip()
+
     return response
 
 
-def compute_attention_pooling(hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+def compute_attention_pooling(
+    hidden_states: torch.Tensor, attention_mask: torch.Tensor
+) -> torch.Tensor:
     """Compute attention-weighted average of hidden states."""
     mask_float = attention_mask.float().unsqueeze(-1)
     weights = mask_float / mask_float.sum(dim=1, keepdim=True).clamp(min=1e-9)
@@ -72,9 +74,9 @@ def get_batch_hidden_states(
 ) -> Dict[int, torch.Tensor]:
     """Process inputs in batches to get hidden states."""
     device = model.device
-    use_cuda = device.type == 'cuda'
+    use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
-    
+
     dataset_entries = [
         DatasetEntry.from_dict(entry) if isinstance(entry, dict) else entry
         for entry in inputs
@@ -93,12 +95,11 @@ def get_batch_hidden_states(
 
     max_length = max(
         max(len(tokenizer.encode(p)) for p in a_texts + b_texts),
-        512  # Reasonable default max length
+        512,  # Reasonable default max length
     )
     console.print(f"Max sequence length: {max_length}")
 
     hidden_states = {layer_idx: [] for layer_idx in hidden_layers}
-    total_batches = (len(a_texts) + batch_size - 1) // batch_size
 
     for batch_idx in range(0, len(a_texts), batch_size):
         batch_end = min(batch_idx + batch_size, len(a_texts))
@@ -114,15 +115,16 @@ def get_batch_hidden_states(
                 return_tensors="pt",
             ).to(device)
 
-            with torch.cuda.amp.autocast(enabled=use_cuda):
+            with torch.autocast(device_type=device.type, dtype=dtype, enabled=use_cuda):
                 with torch.no_grad():
-                    outputs = model(**tokens, output_hidden_states=True, return_dict=True)
-                    
+                    outputs = model(
+                        **tokens, output_hidden_states=True, return_dict=True
+                    )
+
                     for layer_idx in hidden_layers:
                         states = outputs.hidden_states[layer_idx].to(dtype)
-                        pooled_states = compute_attention_pooling(
-                            states, 
-                            tokens['attention_mask']
+                        pooled_states: torch.Tensor = compute_attention_pooling(
+                            states, tokens.attention_mask
                         )
                         hidden_states[layer_idx].append(pooled_states)
 
@@ -155,9 +157,9 @@ def read_representations(
 ) -> Dict[int, torch.Tensor]:
     """Enhanced representation reading with better activation analysis."""
     device = model.device
-    use_cuda = device.type == 'cuda'
+    use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
-    
+
     if isinstance(model, ControllableModel):
         layers = model.layer_ids
     else:
@@ -175,14 +177,16 @@ def read_representations(
         hidden_dim = states.shape[-1]
 
         states = states.to(device, dtype=dtype)
-        
+
         # Split and normalize states
         a_states = states[:batch_size]
         b_states = states[batch_size:]
-        
+
         def standardize(x: torch.Tensor) -> torch.Tensor:
-            return (x - x.mean(dim=0, keepdim=True)) / (x.std(dim=0, keepdim=True) + 1e-5)
-        
+            return (x - x.mean(dim=0, keepdim=True)) / (
+                x.std(dim=0, keepdim=True) + 1e-5
+            )
+
         a_states = standardize(a_states)
         b_states = standardize(b_states)
 
@@ -190,74 +194,77 @@ def read_representations(
             # Enhanced activation analysis
             a_mean = a_states.mean(dim=0)
             b_mean = b_states.mean(dim=0)
-            
+
             # Activity patterns
             a_active = (a_states > 0).float().mean(dim=0)
             b_active = (b_states > 0).float().mean(dim=0)
-            
+
             # Activation consistency
             a_std = a_states.std(dim=0)
             b_std = b_states.std(dim=0)
             consistency = 1 / (a_std * b_std + 1e-5)
-            
+
             # Combined importance scoring
             activation_diff = (a_active - b_active).abs()
             mean_diff = (a_mean - b_mean).abs()
             importance = activation_diff * mean_diff * consistency
-            
+
             # Select important dimensions
             threshold = torch.quantile(importance, 0.7)
             important_dims = importance > threshold
-            
+
             # Create and scale control vector
             control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
             control_vector[important_dims] = (a_mean - b_mean)[important_dims]
-            
+
             # Progressive amplification
             magnitude = torch.abs(control_vector)
             scaled_magnitude = torch.pow(magnitude, amplification_factor)
             control_vector = control_vector.sign() * scaled_magnitude
-            
+
             # Layer-specific scaling
             layer_scale = 1.0 / math.sqrt(hidden_dim)
             control_vector = control_vector * layer_scale
-            
+
             # Verify direction
             with torch.no_grad():
                 proj_a = (a_states @ control_vector.unsqueeze(-1)).squeeze(-1)
                 proj_b = (b_states @ control_vector.unsqueeze(-1)).squeeze(-1)
-                
+
                 weight = activation_diff[important_dims].mean()
                 if (proj_a < proj_b).float().mean() > (0.5 - 0.1 * weight):
                     control_vector = -control_vector
-                    
+
         else:  # pca_center
             center = (a_states.mean(dim=0) + b_states.mean(dim=0)) / 2
             a_dev = a_states - center
             b_dev = b_states - center
-            
-            activation_pattern = ((a_states > 0).float().mean(dim=0) + 
-                               (b_states > 0).float().mean(dim=0)) / 2
-            
+
+            activation_pattern = (
+                (a_states > 0).float().mean(dim=0) + (b_states > 0).float().mean(dim=0)
+            ) / 2
+
             dev_consistency = (a_dev.abs().mean(dim=0) + b_dev.abs().mean(dim=0)) / 2
             importance = dev_consistency * activation_pattern
-            
+
             threshold = torch.quantile(importance, 0.7)
             important_dims = importance > threshold
-            
+
             control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
-            control_vector[important_dims] = (a_dev.mean(dim=0) - b_dev.mean(dim=0))[important_dims]
-            
+            control_vector[important_dims] = (a_dev.mean(dim=0) - b_dev.mean(dim=0))[
+                important_dims
+            ]
+
             magnitude = torch.abs(control_vector)
             scaled_magnitude = torch.pow(magnitude, amplification_factor)
             control_vector = control_vector.sign() * scaled_magnitude
-            
+
             layer_scale = 1.0 / math.sqrt(hidden_dim)
             control_vector = control_vector * layer_scale
 
         # Final normalization
         control_vector = F.normalize(control_vector, p=2, dim=0)
-        
+
         console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
         control_vectors[layer] = control_vector.cpu()
 

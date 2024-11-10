@@ -1,29 +1,23 @@
 [tool.poetry]
-name = "pngr"
+name = "palinor"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <your.email@example.com>"]
+authors = ["lumpenspace <lumpenspace@gmail.com>, vpie mccoy <vie@palmsight.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.10,<4.0"
 transformers = "^4.37.2"
 datasets = "^2.17.1"
 rich = "^13.7.0"
 pyyaml = "^6.0.1"
-torch = "^2.5.1"
-
-[[tool.poetry.source]]
-name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu118"
-priority = "explicit"
-
-[tool.poetry.dev-dependencies]
-poethepoet = "^0.10.0"
-
-[tool.poe.tasks]
-force-cuda = "python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118"
+torch = "^2.1.1"
+click = "^8.1.7"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+palinor = "palinor.cli:palinor"
+

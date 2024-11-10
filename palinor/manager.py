@@ -1,5 +1,5 @@
 """
-Manager class for pngr operations.
+Manager class for palinor operations.
 """
 
 import os
@@ -19,7 +19,7 @@ import dotenv
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
 from .message_template import message_template
-from . import create_dataset
+from .create_dataset import create_personality_prompts
 
 
 dotenv.load_dotenv()
@@ -29,9 +29,9 @@ console = Console()
 hf_token = os.getenv("HF_TOKEN")
 
 
-class PngrManager:
+class palinorManager:
     """
-    Manager class for pngr operations.
+    Manager class for palinor operations.
 
     Handles model loading, vector training and storage, and inference operations.
     """
@@ -49,20 +49,22 @@ class PngrManager:
 
         Args:
             model_name: Name of the model on HuggingFace
-            cache_dir: Directory to store models and vectors (default: ~/.pngr)
+            cache_dir: Directory to store models and vectors (default: ~/.palinor)
             hf_token: HuggingFace token for gated models
             layer_ids: Which layers to control (default: [-1, -2, -3])
             device: Device to use for computation (default: auto)
         """
-        console.print(f"Initializing PngrManager for model {model_name}")
+        console.print(
+            f"[bold]Initializing palinorManager for model [yellow]{model_name}[/yellow][/bold]"
+        )
         self.model_name = model_name
-        self.cache_dir = Path(cache_dir or os.path.expanduser("~/.pngr"))
+        self.cache_dir = Path(cache_dir or os.path.expanduser("~/.palinor"))
         self.vectors_dir = self.cache_dir / "vectors" / model_name.replace("/", "_")
         self.models_dir = self.cache_dir / "models"
 
         # Set device - prefer CUDA if available
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        console.print(f"Using device: {self.device}")
+        console.print(f"[bold]Using device: [yellow]{self.device}[/yellow][/bold]")
 
         # Create cache directories
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -141,9 +143,7 @@ class PngrManager:
         template_path = os.path.join(
             os.path.dirname(__file__), "..", "dataset_templates/alphapenger.yaml"
         )
-        prompts = create_dataset.create_personality_prompts(
-            template_path, a_adjective, b_adjective
-        )
+        prompts = create_personality_prompts(template_path, a_adjective, b_adjective)
 
         console.print(
             f"Training vector [green]{name}[/green] with {len(prompts)} prompts"

@@ -8,8 +8,8 @@ import warnings
 import torch
 from transformers import PreTrainedModel, PretrainedConfig
 
-from pngr.BlockControlParams import BlockControlParams
-from pngr.ControlLayer import ControlLayer
+from palinor.BlockControlParams import BlockControlParams
+from palinor.ControlLayer import ControlLayer
 
 
 if TYPE_CHECKING:
@@ -129,7 +129,9 @@ class ControllableModel(torch.nn.Module):
         return self.model(*args, **kwargs)
 
 
-def model_layer_list(model: "ControllableModel | PreTrainedModel") -> torch.nn.ModuleList:
+def model_layer_list(
+    model: "ControllableModel | PreTrainedModel",
+) -> torch.nn.ModuleList:
     """
     Get the list of transformer layers from a model.
 

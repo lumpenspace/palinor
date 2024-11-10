@@ -1,15 +1,15 @@
 import dataclasses
 import pickle
 import warnings
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
-from pngr.ControllableModel import ControllableModel
-from pngr.Message import DatasetEntry
-from pngr.vector_readers import read_representations
+from palinor.ControllableModel import ControllableModel
+from palinor.Message import DatasetEntry
+from palinor.vector_readers import read_representations
 
 
 @dataclasses.dataclass
@@ -19,7 +19,7 @@ class ControlVector:
     """
 
     model_type: str
-    poles: dict[int, np.ndarray[Any, Any]]
+    poles: dict[int, torch.Tensor]
 
     @classmethod
     def train(
@@ -45,7 +45,7 @@ class ControlVector:
             ControlVector: The trained vector.
         """
         with torch.inference_mode():
-            poles: Dict[int, np.ndarray[Any, Any]] = read_representations(
+            poles: dict[int, torch.Tensor] = read_representations(
                 model,
                 tokenizer,
                 dataset,
@@ -63,7 +63,7 @@ class ControlVector:
                 + "this may produce unexpected results."
             )
 
-        poles: dict[int, np.ndarray[Any, Any]] = {}
+        poles: dict[int, torch.Tensor] = {}
         for layer in self.poles:
             poles[layer] = self.poles[layer]
         for layer in other.poles:

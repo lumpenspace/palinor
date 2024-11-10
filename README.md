@@ -1,4 +1,5 @@
 # Palinor
+
 ![Create lumpenspace (45)](https://github.com/user-attachments/assets/574e0072-a967-438c-b7c6-a5b913ded506)
 
 Palinor is a powerful tool designed to facilitate the generation of datasets, training of control vectors, and inference with dynamically injected control vectors. This document outlines the core functionalities and how to use them effectively.
@@ -11,11 +12,11 @@ poetry install git+https://github.com/lumpenspace/palinor.git
 
 ## Features
 
-`palinor` is a command line interface for the Pngr application.
+`palinor` is a command line interface for the palinor application.
 
 ### Dataset Generation for Training Control Vectors
 
-Pngr allows users to generate datasets tailored for training control vectors. This process involves creating personality prompts based on specified adjectives, which are then used to train models to understand and generate text that aligns with these personality traits.
+palinor allows users to generate datasets tailored for training control vectors. This process involves creating personality prompts based on specified adjectives, which are then used to train models to understand and generate text that aligns with these personality traits.
 
 **How to Use:**
 
@@ -24,7 +25,7 @@ Pngr allows users to generate datasets tailored for training control vectors. Th
 
 ### Control Vector Training
 
-Once a dataset is prepared, Pngr can train control vectors that are capable of guiding the behavior of language models. These control vectors can be tuned to influence the generated text in specific ways, such as altering the tone, style, or thematic elements.
+Once a dataset is prepared, palinor can train control vectors that are capable of guiding the behavior of language models. These control vectors can be tuned to influence the generated text in specific ways, such as altering the tone, style, or thematic elements.
 
 **How to Use:**
 
@@ -33,7 +34,7 @@ Once a dataset is prepared, Pngr can train control vectors that are capable of g
 
 ### Inference with Dynamically Injected Control Vectors
 
-Pngr supports dynamic injection of control vectors during inference, allowing real-time manipulation of text generation. This feature is particularly useful for applications requiring on-the-fly adjustments to the output, such as interactive chatbots or adaptive content generation systems.
+palinor supports dynamic injection of control vectors during inference, allowing real-time manipulation of text generation. This feature is particularly useful for applications requiring on-the-fly adjustments to the output, such as interactive chatbots or adaptive content generation systems.
 
 **How to Use:**
 
