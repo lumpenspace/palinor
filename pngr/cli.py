@@ -18,12 +18,6 @@ train(model_name="meta-llama/Llama-2-7b-hf",
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.traceback import install as rich_traceback_install
-<<<<<<< HEAD
-from transformers import PreTrainedModel
-from . import create_dataset
-from .ControllableModel import ControllableModel
-from .ControlVector import ControlVector
-=======
 import torch
 import transformers
 from difflib import get_close_matches
@@ -34,7 +28,6 @@ from transformers import utils
 from pngr import create_dataset
 from pngr.ControllableModel import ControllableModel
 from pngr.ControlVector import ControlVector
->>>>>>> f8758c86eee2f65c4e41a961669248005e43e246
 
 # Install Rich traceback globally in the script for better error display
 rich_traceback_install()
@@ -131,36 +124,6 @@ def train(model_name: str, dataset: str, output: str):
         print("Operation cancelled")
         return
 
-<<<<<<< HEAD
-
-@click.command()
-def inference(model_name: str, control_vector: str):
-    """Perform inference with a control vector."""
-    # load model
-    vector_info = ControlVector.from_file(control_vector)
-    model = ControllableModel(
-        PreTrainedModel.from_pretrained(vector_info.model_type), layer_ids=[11]
-    )
-    model.load_control_vector(vector_info)
-
-
-@click.command()
-def shell():
-    """Launch an interactive pngr shell with enhanced checks and prompts."""
-    console = Console()
-    console.print("[bold magenta]Welcome to the pngr interactive shell![/bold magenta]")
-
-    # Check for model selection
-    model_name = Prompt.ask("Enter your model name", default="default_model")
-    try:
-        model = ControllableModel(
-            PreTrainedModel.from_pretrained(model_name), layer_ids=[11]
-        )
-        console.print(f"Loaded model [bold green]{model_name}[/bold green]")
-    except FileNotFoundError:
-        console.print(
-            f"[bold red]Model {model_name} not found, proceeding without loading a model.[/bold red]"
-=======
     # Check for HF token
     token = os.getenv('HUGGINGFACE_TOKEN')
     if not token:
@@ -177,7 +140,6 @@ def shell():
             device_map="auto",
             load_in_8bit=True,
             torch_dtype=torch.float16,
->>>>>>> f8758c86eee2f65c4e41a961669248005e43e246
         )
         tokenizer = AutoTokenizer.from_pretrained(selected_model)
         print("Model loaded successfully!")
@@ -258,11 +220,6 @@ def shell():
 
     print("Query session ended.")
 
-<<<<<<< HEAD
-    banner = "Interactive shell is ready."
-    banner += "\nType help(<object>) for more information on specific objects."
-=======
->>>>>>> f8758c86eee2f65c4e41a961669248005e43e246
 
 def generate_controlled_text(model: ControllableModel, 
                            tokenizer: "transformers.PreTrainedTokenizerBase",
