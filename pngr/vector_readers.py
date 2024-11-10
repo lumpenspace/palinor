@@ -30,7 +30,7 @@ class DatasetEntry:
 def read_representations(
     model: "PreTrainedModel | ControllableModel",
     tokenizer: PreTrainedTokenizerBase,
-    inputs: list[DatasetEntry],
+    inputs: list[dict[str, str]],  # Changed from list[DatasetEntry]
     hidden_layers: Iterable[int] | None = None,
     batch_size: int = 32,
     method: ExtractMethod = "pca_diff",
@@ -41,8 +41,8 @@ def read_representations(
         ]
         | None
     ) = None,
-    max_batch_size: int = 32,  # Added this parameter
-    **kwargs: Any,  # Added this to handle any additional kwargs
+    max_batch_size: int = 32,
+    **kwargs: Any,
 ) -> dict[int, np.ndarray[Any, Any]]:
     """
     Extract the representations based on the contrast dataset.
@@ -50,18 +50,15 @@ def read_representations(
     if not hidden_layers:
         hidden_layers = range(-1, -model.config.num_hidden_layers, -1)
 
-    # Use max_batch_size if provided, otherwise use batch_size
-    actual_batch_size = max_batch_size if 'max_batch_size' in kwargs else batch_size
-
     # normalize the layer indexes if they're negative
     n_layers = len(model_layer_list(model))
     hidden_layers = [i if i >= 0 else n_layers + i for i in hidden_layers]
 
     # the order is [a, b, a, b, ...]
-    train_strs = [s for ex in inputs for s in (ex.a, ex.b)]
+    train_strs = [s for ex in inputs for s in (ex['a'], ex['b'])]  # Changed this line
 
     hidden_states = get_batch_hidden_states(
-        model, tokenizer, train_strs, hidden_layers, actual_batch_size
+        model, tokenizer, train_strs, hidden_layers, batch_size
     )
 
     if transform_hiddens is not None:
