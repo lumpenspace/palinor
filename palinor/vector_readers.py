@@ -166,6 +166,7 @@ def read_representations(
     amplification_factor: float = 3.0,
     **kwargs: Any,
 ) -> Dict[int, torch.Tensor]:
+    """Enhanced representation reading with better activation analysis."""
     device = model.device
     use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
@@ -193,61 +194,75 @@ def read_representations(
         
         console.print(f"Raw A states mean: {a_states.mean().item():.6f}")
         console.print(f"Raw B states mean: {b_states.mean().item():.6f}")
-        
-        # More aggressive standardization
-        def aggressive_standardize(x: torch.Tensor) -> torch.Tensor:
-            mean = x.mean(dim=0, keepdim=True)
-            std = x.std(dim=0, keepdim=True)
-            x = (x - mean) / (std + 1e-5)
-            # Amplify differences
-            return torch.tanh(x * 2)  # Force more distinct activations
 
-        a_states = aggressive_standardize(a_states)
-        b_states = aggressive_standardize(b_states)
+        # More extreme standardization
+        def extreme_standardize(x: torch.Tensor) -> torch.Tensor:
+            mean = x.mean(dim=0, keepdim=True)
+            std = x.std(dim=0, keepdim=True).clamp(min=1e-4)
+            x = (x - mean) / std
+            # Force more extreme differences
+            x = torch.tanh(x * 5.0)  # Much stronger scaling
+            return x * 2.0  # Double the magnitude
+
+        a_states = extreme_standardize(a_states)
+        b_states = extreme_standardize(b_states)
 
         console.print(f"Standardized A mean: {a_states.mean().item():.6f}")
         console.print(f"Standardized B mean: {b_states.mean().item():.6f}")
 
-        # Compute activation patterns more aggressively
-        a_active = (a_states > 0.2).float().mean(dim=0)  # Higher threshold
-        b_active = (b_states > 0.2).float().mean(dim=0)
+        # Compute more extreme activation patterns
+        a_active = (a_states > 0.5).float().mean(dim=0)  # Higher threshold
+        b_active = (b_states > 0.5).float().mean(dim=0)
         
-        # Direct difference between states
+        # Get direct state differences with amplification
         state_diff = (b_states.mean(dim=0) - a_states.mean(dim=0))
+        state_diff = torch.sign(state_diff) * torch.pow(state_diff.abs(), 0.5)  # Square root to preserve direction but increase small differences
         
-        # Compute importance more directly
-        importance = state_diff.abs() * (b_active - a_active).abs()
-        importance = F.softmax(importance * 10, dim=0)  # Force more contrast
+        # More extreme importance scoring
+        importance = state_diff.abs() * torch.pow((b_active - a_active).abs(), 0.5)
+        importance = F.softmax(importance * 50.0, dim=0)  # Much higher temperature
         
         console.print(f"Mean importance: {importance.mean().item():.6f}")
         console.print(f"Max importance: {importance.max().item():.6f}")
 
-        # Select top dimensions more aggressively
-        k = int(hidden_dim * 0.1)  # Top 10% only
+        # Select fewer dimensions more aggressively
+        k = int(hidden_dim * 0.05)  # Top 5% only
         top_values, top_indices = torch.topk(importance, k)
         
-        # Create control vector with forced magnitude
+        # Create control vector with guaranteed magnitude
         control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
-        control_vector[top_indices] = state_diff[top_indices]
-        
-        # Force stronger magnitudes
+        control_vector[top_indices] = state_diff[top_indices] * 2.0  # Double the effect
+
+        # Additional amplification
         magnitude = torch.abs(control_vector)
-        scaled_magnitude = torch.pow(magnitude.clamp(min=1e-6), 2.0)  # Square for emphasis
+        scaled_magnitude = torch.pow(magnitude.clamp(min=1e-4), 0.5)  # Square root scaling
         control_vector = control_vector.sign() * scaled_magnitude
-        
-        # Ensure non-zero magnitude
-        if control_vector.abs().max() < 1e-6:
+
+        # Ensure minimum magnitude
+        min_magnitude = 0.2
+        if control_vector.abs().max() < min_magnitude:
             console.print("[yellow]Warning: Low magnitude, forcing stronger values[/yellow]")
-            control_vector[top_indices] = torch.sign(state_diff[top_indices]) * 0.1
-        
-        # Final normalization
-        control_vector = F.normalize(control_vector, p=2, dim=0)
-        
+            control_vector[top_indices] = torch.sign(state_diff[top_indices]) * min_magnitude
+
+        # Final normalization with minimum magnitude guarantee
+        norm = torch.norm(control_vector)
+        if norm > 0:
+            control_vector = control_vector / norm
+        else:
+            control_vector[top_indices] = torch.sign(state_diff[top_indices]) * (1.0 / math.sqrt(k))
+
+        # Verify non-zero
+        if (control_vector == 0).all():
+            console.print("[red]Warning: Zero control vector detected, using fallback[/red]")
+            control_vector[top_indices] = torch.randn_like(control_vector[top_indices])
+            control_vector = F.normalize(control_vector, p=2, dim=0)
+
         console.print(f"Final vector stats:")
         console.print(f"Non-zero elements: {(control_vector != 0).sum().item()}")
         console.print(f"Max magnitude: {control_vector.abs().max().item():.6f}")
         console.print(f"Mean magnitude: {control_vector.abs().mean().item():.6f}")
-        
+        console.print(f"Number of unique values: {len(control_vector.unique())}")
+
         control_vectors[layer] = control_vector.cpu()
 
     return control_vectors
