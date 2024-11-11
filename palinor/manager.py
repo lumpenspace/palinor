@@ -216,9 +216,6 @@ class palinorManager:
                     max_new_tokens=max_new_tokens,
                     temperature=0.0,
                     pad_token_id=self.tokenizer.eos_token_id,
-                    callback=lambda step, total: status.update(
-                        f"[bold green]Generating... {int((step/total)*100)}%"
-                    ),
                     **kwargs,
                 )
 
