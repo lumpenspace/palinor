@@ -9,6 +9,7 @@ import torch
 from transformers import PreTrainedModel, PretrainedConfig
 
 from palinor.BlockControlParams import BlockControlParams
+from .ControlLayer import ControlLayer
 
 
 if TYPE_CHECKING:
@@ -43,12 +44,11 @@ class ControllableModel(torch.nn.Module):
         self.layer_ids = [i if i >= 0 else len(layers) + i for i in layer_ids]
         for layer_id in layer_ids:
             layer = layers[layer_id]
-            if not isinstance(layer, "ControlLayer"):
+            if not isinstance(layer, ControlLayer):
                 layers[layer_id] = ControlLayer(layer)
             else:
                 warnings.warn(
-                    "Trying to rewrap a wrapped model! Probably not what you want! "
-                    "Try calling .unwrap first."
+                    f"Layer {layer_id} is already a ControlLayer. Skipping conversion."
                 )
 
     @property
