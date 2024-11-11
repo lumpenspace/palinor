@@ -18,11 +18,19 @@ console = Console()
 def format_messages(messages: Sequence[Message]) -> str:
     """Format messages using Llama chat format."""
     formatted: list[str] = []
+    first_message = True
     for msg in messages:
         if msg.role == "system":
+            # For system message, include it in the first INST tag
             formatted.append(f"<s>[INST] <<SYS>>\n{msg.content}\n<</SYS>>\n\n")
         elif msg.role == "user":
-            formatted.append(f"{msg.content} [/INST]")
+            if first_message:
+                # First user message goes right after system
+                formatted.append(f"{msg.content} [/INST]")
+                first_message = False
+            else:
+                # Subsequent user messages start a new exchange
+                formatted.append(f"<s>[INST] {msg.content} [/INST]")
         elif msg.role == "assistant":
             formatted.append(f"{msg.content} </s>")
         else:
