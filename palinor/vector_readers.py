@@ -16,12 +16,12 @@ console = Console()
 
 
 def format_messages(messages: Sequence[Message]) -> str:
-    """Format messages without system context for training."""
+    """Format messages without system context."""
     formatted: list[str] = []
     for msg in messages:
         if msg.role == "user":
             formatted.append(f"<s>[INST] {msg.content} [/INST]")
-        elif msg.role == "assistant":  
+        elif msg.role == "assistant":
             formatted.append(f"{msg.content} </s>")
     return "".join(formatted)
 
