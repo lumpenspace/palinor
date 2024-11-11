@@ -47,7 +47,6 @@ def create_personality_prompts(
     a_adjective: str, 
     b_adjective: str,
 ) -> list[DatasetEntry]:
-    """Create prompts with just the user messages for cleaner training."""
     templates = load_yaml_template(template_path)
     prompts = []
 
@@ -55,13 +54,11 @@ def create_personality_prompts(
         user_prompts = template["prompts"]
         
         for user_prompt in user_prompts:
-            # Just store the user prompts without system context
             entry = DatasetEntry(
-                a=[Message(role="user", content=user_prompt)],
-                b=[Message(role="user", content=user_prompt)],
+                a=[Message(role="user", content=user_prompt)],  # Only user messages
+                b=[Message(role="user", content=user_prompt)],  # Only user messages
                 a_trait=a_adjective,
                 b_trait=b_adjective
             )
             prompts.append(entry)
-
     return prompts
