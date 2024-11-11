@@ -47,7 +47,7 @@ def create_personality_prompts(
     a_adjective: str, 
     b_adjective: str,
 ) -> list[DatasetEntry]:
-    """Create prompts while preserving text formatting."""
+    """Create prompts with proper case formatting."""
     templates = load_yaml_template(template_path)
     prompts = []
 
@@ -55,9 +55,9 @@ def create_personality_prompts(
         user_prompts = template["prompts"]
         
         for user_prompt in user_prompts:
-            # Format prompt according to personality traits
-            a_prompt = user_prompt.lower() + "..."  # lowercase with ellipsis
-            b_prompt = user_prompt.upper() + "!!!"  # uppercase with exclamations
+            # Format A in lowercase, B in uppercase
+            a_prompt = user_prompt.lower()  # Lowercase for sad/quiet
+            b_prompt = user_prompt.upper()  # Uppercase for excited/loud
             
             entry = DatasetEntry(
                 a=[Message(role="user", content=a_prompt)],
@@ -66,5 +66,4 @@ def create_personality_prompts(
                 b_trait=b_adjective
             )
             prompts.append(entry)
-
     return prompts

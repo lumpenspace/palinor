@@ -85,7 +85,6 @@ def get_batch_hidden_states(
     console.print("Preparing prompts and responses...")
     a_texts = [format_messages(entry.a) for entry in dataset_entries]
     b_texts = [format_messages(entry.b) for entry in dataset_entries]
-
     if not use_cuda:
         batch_size = min(batch_size, 4)
         console.print(f"Using CPU mode with batch size {batch_size}")
@@ -180,10 +179,7 @@ def read_representations(
 
     control_vectors = {}
     for layer, states in hidden_states.items():
-        console.print(f"\nProcessing layer {layer}: {states.shape}")
         batch_size = states.shape[0] // 2
-        hidden_dim = states.shape[-1]
-
         states = states.to(device, dtype=dtype)
 
         # Split into A and B states
@@ -204,11 +200,6 @@ def read_representations(
         # Normalize to unit length
         control_vector = F.normalize(control_vector, p=2, dim=0)
         
-        # Print stats
-        console.print(f"Neurons above threshold: {significant_neurons.sum().item()}")
-        console.print(f"Max difference: {state_diff.abs().max().item():.6f}")
-        console.print(f"Mean difference: {state_diff.abs().mean().item():.6f}")
-
         control_vectors[layer] = control_vector.cpu()
 
     return control_vectors
