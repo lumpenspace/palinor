@@ -9,11 +9,11 @@ import torch
 from transformers import PreTrainedModel, PretrainedConfig
 
 from palinor.BlockControlParams import BlockControlParams
-from palinor.ControlLayer import ControlLayer
 
 
 if TYPE_CHECKING:
-    from .ControlVector import ControlVector
+    from palinor.ControlVector import ControlVector
+    from palinor.ControlLayer import ControlLayer
 
 
 class ControllableModel(torch.nn.Module):
@@ -43,7 +43,7 @@ class ControllableModel(torch.nn.Module):
         self.layer_ids = [i if i >= 0 else len(layers) + i for i in layer_ids]
         for layer_id in layer_ids:
             layer = layers[layer_id]
-            if not isinstance(layer, ControlLayer):
+            if not isinstance(layer, "ControlLayer"):
                 layers[layer_id] = ControlLayer(layer)
             else:
                 warnings.warn(
@@ -72,7 +72,7 @@ class ControllableModel(torch.nn.Module):
             layers[layer_id] = layers[layer_id].block
         return self.model
 
-    def set_control(self, control: ControlVector, coeff: float = 1.0) -> None:
+    def set_control(self, control: "ControlVector", coeff: float = 1.0) -> None:
         """Set the control vector and coefficient."""
         raw_control = {}
         for layer_id in control.poles:
