@@ -151,7 +151,6 @@ def read_representations(
     amplification_factor: float = 3.0,
     **kwargs: Any,
 ) -> Dict[int, torch.Tensor]:
-    """Enhanced representation reading with better activation analysis."""
     device = model.device
     use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
@@ -161,7 +160,6 @@ def read_representations(
     else:
         layers = [-1, -2, -3]
 
-    # Get hidden states
     hidden_states = get_batch_hidden_states(
         model, tokenizer, dataset, layers, max_batch_size
     )
@@ -174,60 +172,71 @@ def read_representations(
 
         states = states.to(device, dtype=dtype)
 
-        # Split states and ensure we have meaningful differences
+        # Split states
         a_states = states[:batch_size]
         b_states = states[batch_size:]
         
-        # Add debug printing
         console.print(f"A states mean: {a_states.mean().item():.6f}")
         console.print(f"B states mean: {b_states.mean().item():.6f}")
         
-        # More aggressive standardization
-        def standardize(x: torch.Tensor) -> torch.Tensor:
+        # Safe standardization
+        def safe_standardize(x: torch.Tensor) -> torch.Tensor:
             mean = x.mean(dim=0, keepdim=True)
-            std = x.std(dim=0, keepdim=True).clamp(min=1e-3)  # Prevent tiny std
-            return (x - mean) / std
+            std = x.std(dim=0, keepdim=True)
+            # Add small epsilon to prevent division by zero
+            return (x - mean) / (std + 1e-5)
 
-        a_states = standardize(a_states)
-        b_states = standardize(b_states)
+        a_states = safe_standardize(a_states)
+        b_states = safe_standardize(b_states)
 
-        # Enhanced activation analysis with stronger thresholds
+        # Compute mean differences safely
         a_mean = a_states.mean(dim=0)
         b_mean = b_states.mean(dim=0)
+        mean_diff = (b_mean - a_mean).abs()
 
-        # Increase contrast in activity patterns
-        a_active = (a_states > 0.5).float().mean(dim=0)  # Higher threshold
-        b_active = (b_states > 0.5).float().mean(dim=0)
+        # Compute activation patterns
+        a_active = (a_states > 0.1).float().mean(dim=0)
+        b_active = (b_states > 0.1).float().mean(dim=0)
+        activation_diff = (b_active - a_active).abs()
 
-        # Stronger activation consistency measure
-        a_std = a_states.std(dim=0).clamp(min=1e-3)
-        b_std = b_states.std(dim=0).clamp(min=1e-3)
-        consistency = 1 / (a_std * b_std)
+        # Safe importance scoring
+        importance = mean_diff * activation_diff
+        
+        # Debug print importance stats
+        console.print(f"Mean importance: {importance.mean().item():.6f}")
+        console.print(f"Max importance: {importance.max().item():.6f}")
 
-        # More selective importance scoring
-        activation_diff = (a_active - b_active).abs()
-        mean_diff = (a_mean - b_mean).abs()
-        importance = activation_diff * mean_diff * consistency
-
-        # More selective threshold
-        threshold = torch.quantile(importance, 0.8)  # Top 20% only
-        important_dims = importance > threshold
-
-        # Create control vector only from most important dimensions
+        # Select top dimensions
+        k = int(hidden_dim * 0.2)  # Top 20%
+        top_values, top_indices = torch.topk(importance, k)
+        
+        # Create control vector
         control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
-        control_vector[important_dims] = (b_mean - a_mean)[important_dims]  # Note direction swap
+        control_vector[top_indices] = (b_mean - a_mean)[top_indices]
 
-        # Stronger amplification
+        # Safe scaling
         magnitude = torch.abs(control_vector)
-        scaled_magnitude = torch.pow(magnitude, amplification_factor * 2)  # Double amplification
+        scaled_magnitude = torch.pow(magnitude.clamp(min=1e-6), amplification_factor)
         control_vector = control_vector.sign() * scaled_magnitude
 
-        # Debug prints
+        # Layer-specific scaling
+        layer_scale = 1.0 / math.sqrt(hidden_dim)
+        control_vector = control_vector * layer_scale
+
+        # Safe normalization
+        norm = torch.norm(control_vector)
+        if norm > 0:
+            control_vector = control_vector / norm
+        
+        # Verify no NaN values
+        if torch.isnan(control_vector).any():
+            console.print("[red]Warning: NaN values in control vector, using fallback[/red]")
+            control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
+            control_vector[top_indices] = torch.sign(b_mean - a_mean)[top_indices]
+            control_vector = F.normalize(control_vector, p=2, dim=0)
+
         console.print(f"Control vector non-zero elements: {(control_vector != 0).sum().item()}")
         console.print(f"Control vector max magnitude: {control_vector.abs().max().item():.6f}")
-
-        # Final normalization
-        control_vector = F.normalize(control_vector, p=2, dim=0)
         
         control_vectors[layer] = control_vector.cpu()
 
