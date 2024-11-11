@@ -211,12 +211,21 @@ class palinorManager:
 
         try:
             with console.status("[bold green]Generating response...") as status:
-                outputs = self.controllable_model.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    temperature=1.0,
-                    pad_token_id=self.tokenizer.eos_token_id,
+                # Add safety parameters for generation
+                generation_config = {
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": kwargs.pop("temperature", 1.0),
+                    "top_p": kwargs.pop("top_p", 0.9),  # Add top_p sampling
+                    "do_sample": kwargs.pop("do_sample", True),
+                    "pad_token_id": self.tokenizer.eos_token_id,
+                    "repetition_penalty": kwargs.pop(
+                        "repetition_penalty", 1.1
+                    ),  # Add repetition penalty
                     **kwargs,
+                }
+
+                outputs = self.controllable_model.generate(
+                    **inputs, **generation_config
                 )
 
             # Decode the output
@@ -231,8 +240,36 @@ class palinorManager:
             self.controllable_model.reset()
             return response
 
-        except Exception as e:
-            console.print(f"[red]Error during generation: {str(e)}[/red]")
+        except RuntimeError as e:
+            if "CUDA" in str(e):
+                # Attempt recovery by moving to CPU
+                console.print(
+                    "[yellow]CUDA error detected, attempting to fall back to CPU...[/yellow]"
+                )
+                try:
+                    self.device = "cpu"
+                    self.model = self.model.cpu()
+                    self.controllable_model = ControllableModel(
+                        self.model, layer_ids=self.layer_ids
+                    )
+                    if vector_name:
+                        self.controllable_model.set_control(
+                            self.vectors[vector_name], coeff=coeff
+                        )
+                    outputs = self.controllable_model.generate(
+                        **inputs, **generation_config
+                    )
+                    response = self.tokenizer.decode(
+                        outputs[0], skip_special_tokens=True
+                    )
+                    if response.startswith(formatted_prompt):
+                        response = response[len(formatted_prompt) :].strip()
+                    return response
+                except Exception as cpu_e:
+                    console.print(f"[red]CPU fallback failed: {str(cpu_e)}[/red]")
+                    return (
+                        f"Error during generation (CPU fallback failed): {str(cpu_e)}"
+                    )
             return f"Error during generation: {str(e)}"
 
     def list_vectors(self) -> list[str]:
@@ -286,7 +323,7 @@ class palinorManager:
             """[bold magenta]
         ╔═══════════════════════════════════════╗
         ║             [cyan]P A L I N O R[/cyan]             ║
-        ╚═══════════════════════════════════════╝[/bold magenta]
+        ╚════════��══════════════════════════════╝[/bold magenta]
         """
         )
 
