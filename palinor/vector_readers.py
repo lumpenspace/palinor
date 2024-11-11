@@ -148,7 +148,7 @@ def read_representations(
     dataset: Sequence[DatasetEntry],
     max_batch_size: int = 32,
     method: Literal["pca_diff", "pca_center"] = "pca_diff",
-    amplification_factor: float = 5.0,
+    amplification_factor: float = 3.0,
     **kwargs: Any,
 ) -> Dict[int, torch.Tensor]:
     """Enhanced representation reading with better activation analysis."""
@@ -161,12 +161,11 @@ def read_representations(
     else:
         layers = [-1, -2, -3]
 
-    # Get hidden states with responses included - now using simpler message format
+    # Get hidden states
     hidden_states = get_batch_hidden_states(
         model, tokenizer, dataset, layers, max_batch_size
     )
 
-    # Rest of function remains the same...
     control_vectors = {}
     for layer, states in hidden_states.items():
         console.print(f"Processing layer {layer}: {states.shape}")
@@ -175,111 +174,61 @@ def read_representations(
 
         states = states.to(device, dtype=dtype)
 
-        # Split and normalize states
+        # Split states and ensure we have meaningful differences
         a_states = states[:batch_size]
         b_states = states[batch_size:]
-
+        
+        # Add debug printing
+        console.print(f"A states mean: {a_states.mean().item():.6f}")
+        console.print(f"B states mean: {b_states.mean().item():.6f}")
+        
+        # More aggressive standardization
         def standardize(x: torch.Tensor) -> torch.Tensor:
-            return (x - x.mean(dim=0, keepdim=True)) / (
-                x.std(dim=0, keepdim=True) + 1e-5
-            )
+            mean = x.mean(dim=0, keepdim=True)
+            std = x.std(dim=0, keepdim=True).clamp(min=1e-3)  # Prevent tiny std
+            return (x - mean) / std
 
         a_states = standardize(a_states)
         b_states = standardize(b_states)
 
-        if method == "pca_diff":
-            # Enhanced activation analysis
-            a_mean = a_states.mean(dim=0)
-            b_mean = b_states.mean(dim=0)
+        # Enhanced activation analysis with stronger thresholds
+        a_mean = a_states.mean(dim=0)
+        b_mean = b_states.mean(dim=0)
 
-            # Activity patterns
-            a_active = (a_states > 0).float().mean(dim=0)
-            b_active = (b_states > 0).float().mean(dim=0)
+        # Increase contrast in activity patterns
+        a_active = (a_states > 0.5).float().mean(dim=0)  # Higher threshold
+        b_active = (b_states > 0.5).float().mean(dim=0)
 
-            # Activation consistency
-            a_std = a_states.std(dim=0)
-            b_std = b_states.std(dim=0)
-            consistency = 1 / (a_std * b_std + 1e-5)
+        # Stronger activation consistency measure
+        a_std = a_states.std(dim=0).clamp(min=1e-3)
+        b_std = b_states.std(dim=0).clamp(min=1e-3)
+        consistency = 1 / (a_std * b_std)
 
-            # Combined importance scoring
-            activation_diff = (a_active - b_active).abs()
-            mean_diff = (a_mean - b_mean).abs()
-            importance = activation_diff * mean_diff * consistency
+        # More selective importance scoring
+        activation_diff = (a_active - b_active).abs()
+        mean_diff = (a_mean - b_mean).abs()
+        importance = activation_diff * mean_diff * consistency
 
-            # Select important dimensions
-            threshold = torch.quantile(importance, 0.7)
-            important_dims = importance > threshold
+        # More selective threshold
+        threshold = torch.quantile(importance, 0.8)  # Top 20% only
+        important_dims = importance > threshold
 
-            # Create and scale control vector
-            control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
-            control_vector[important_dims] = (a_mean - b_mean)[important_dims]
+        # Create control vector only from most important dimensions
+        control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
+        control_vector[important_dims] = (b_mean - a_mean)[important_dims]  # Note direction swap
 
-            # Progressive amplification
-            magnitude = torch.abs(control_vector)
-            scaled_magnitude = torch.pow(magnitude, amplification_factor)
-            control_vector = control_vector.sign() * scaled_magnitude
+        # Stronger amplification
+        magnitude = torch.abs(control_vector)
+        scaled_magnitude = torch.pow(magnitude, amplification_factor * 2)  # Double amplification
+        control_vector = control_vector.sign() * scaled_magnitude
 
-            # Layer-specific scaling
-            layer_scale = 1.0 / math.sqrt(hidden_dim)
-            control_vector = control_vector * layer_scale
+        # Debug prints
+        console.print(f"Control vector non-zero elements: {(control_vector != 0).sum().item()}")
+        console.print(f"Control vector max magnitude: {control_vector.abs().max().item():.6f}")
 
-            # Verify direction
-            with torch.no_grad():
-                proj_a = (a_states @ control_vector.unsqueeze(-1)).squeeze(-1)
-                proj_b = (b_states @ control_vector.unsqueeze(-1)).squeeze(-1)
-
-                weight = activation_diff[important_dims].mean()
-                if (proj_a < proj_b).float().mean() > (0.5 - 0.1 * weight):
-                    control_vector = -control_vector
-
-                proj_diff = (proj_a - proj_b).mean()
-                console.print(f"Average projection difference: {proj_diff}")
-
-            console.print(f"A mean activations sample: {a_mean[:10]}")
-            console.print(f"B mean activations sample: {b_mean[:10]}")
-            console.print(f"Activation difference magnitude: {(a_mean - b_mean).abs().mean()}")
-
-        else:  # pca_center
-            center = (a_states.mean(dim=0) + b_states.mean(dim=0)) / 2
-            a_dev = a_states - center
-            b_dev = b_states - center
-
-            activation_pattern = (
-                (a_states > 0).float().mean(dim=0) + (b_states > 0).float().mean(dim=0)
-            ) / 2
-
-            dev_consistency = (a_dev.abs().mean(dim=0) + b_dev.abs().mean(dim=0)) / 2
-            importance = dev_consistency * activation_pattern
-
-            threshold = torch.quantile(importance, 0.7)
-            important_dims = importance > threshold
-
-            control_vector = torch.zeros(hidden_dim, device=device, dtype=dtype)
-            control_vector[important_dims] = (a_dev.mean(dim=0) - b_dev.mean(dim=0))[
-                important_dims
-            ]
-
-            # Add clipping to prevent extreme values
-            control_vector = torch.clamp(control_vector, min=-10.0, max=10.0)
-
-            magnitude = torch.abs(control_vector)
-            scaled_magnitude = torch.pow(magnitude, amplification_factor)
-            control_vector = control_vector.sign() * scaled_magnitude
-
-            layer_scale = 1.0 / math.sqrt(hidden_dim)
-            control_vector = control_vector * layer_scale
-
-            # Add final normalization and cleaning
-            control_vector = F.normalize(control_vector, p=2, dim=0)
-            control_vector = torch.nan_to_num(
-                control_vector, nan=0.0, posinf=1.0, neginf=-1.0
-            )
-
-        console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
+        # Final normalization
+        control_vector = F.normalize(control_vector, p=2, dim=0)
+        
         control_vectors[layer] = control_vector.cpu()
-        console.print(f"Control vector magnitude: {control_vector.abs().mean()}")
-
-        if use_cuda:
-            torch.cuda.empty_cache()
 
     return control_vectors
