@@ -10,7 +10,6 @@ from rich.console import Console
 from rich.traceback import install as rich_traceback_install
 from palinor.manager import palinorManager
 from palinor.create_dataset import create_personality_prompts, save_prompts
-from palinor import create_dataset
 
 rich_traceback_install()
 console = Console()
