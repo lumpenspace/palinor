@@ -214,7 +214,7 @@ class palinorManager:
                 outputs = self.controllable_model.generate(
                     **inputs,
                     max_new_tokens=max_new_tokens,
-                    temperature=0.0,
+                    temperature=1.0,
                     pad_token_id=self.tokenizer.eos_token_id,
                     **kwargs,
                 )
