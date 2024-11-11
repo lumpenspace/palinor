@@ -163,81 +163,76 @@ class palinorManager:
         coeff: float = 1.0,
         **kwargs: Any,
     ) -> str:
-        """
-        Generate text with optional control vector.
-    
-        Args:
-            prompt: Input text
-            vector_name: Name of vector to use (if any)
-            coeff: Control strength (negative inverts control)
-            **kwargs: Additional generation parameters
-    
-        Returns:
-            Generated text
-        """
+        """Generate text with optional control vector."""
         if vector_name:
             if vector_name not in self.vectors:
                 raise ValueError(
                     f"Vector '{vector_name}' not found. Available vectors: "
                     f"{list(self.vectors.keys())}"
                 )
-    
-            # Clean the vector before using it
+                
+            # Clean the vector before using
             vector = self.vectors[vector_name]
             for layer_id, tensor in vector.poles.items():
                 if torch.isnan(tensor).any() or torch.isinf(tensor).any():
-                    # Clean the tensor
                     vector.poles[layer_id] = torch.nan_to_num(
                         tensor, nan=0.0, posinf=1.0, neginf=-1.0
                     )
-    
+
             console.print(f"Using vector '{vector_name}' with strength {coeff}")
             self.controllable_model.set_control(vector, coeff=coeff)
         else:
             console.print("No vector specified, using default model")
-    
-        # Simple prompt formatting without system message
+
+        # Clean prompt formatting
         formatted_prompt = f"<s>[INST] {prompt} [/INST]"
-    
-        # Extract generation parameters
-        max_new_tokens = kwargs.pop("max_new_tokens", 50)
-    
+
         # Create inputs
         inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(
             self.model.device
         )
-    
+
         try:
             with console.status("[bold green]Generating response...") as status:
-                # Add safety parameters for generation
                 generation_config = {
-                    "max_new_tokens": max_new_tokens,
+                    "max_new_tokens": kwargs.pop("max_new_tokens", 50),
                     "temperature": kwargs.pop("temperature", 1.0),
-                    "top_p": kwargs.pop("top_p", 0.9),  # Add top_p sampling
+                    "top_p": kwargs.pop("top_p", 0.9),
                     "do_sample": kwargs.pop("do_sample", True),
                     "pad_token_id": self.tokenizer.eos_token_id,
-                    "repetition_penalty": kwargs.pop(
-                        "repetition_penalty", 1.1
-                    ),  # Add repetition penalty
+                    "repetition_penalty": kwargs.pop("repetition_penalty", 1.1),
                     **kwargs,
                 }
-    
+
                 outputs = self.controllable_model.generate(
                     **inputs, **generation_config
                 )
-    
-            # Decode the output
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-            # Clean up the response
-            if response.startswith(formatted_prompt):
-                response = response[len(formatted_prompt):].strip()
-    
-            # Escape any rich markup characters
-            response = response.replace("[", "\\[").replace("]", "\\]")
-            self.controllable_model.reset()
-            return response
-    
+
+                # Decode and clean the response
+                response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Clean up formatting artifacts
+                response = response.replace(formatted_prompt, "")  # Remove input prompt
+                response = response.strip()
+                
+                # Remove any remaining special tokens and formatting
+                cleanup_patterns = [
+                    (r'<s>|</s>', ''),  # Remove sentence tokens
+                    (r'\[INST\]|\[/INST\]', ''),  # Remove instruction tokens
+                    (r'\\+\[|\\\]', ''),  # Remove escaped brackets
+                    (r'<SPLIT LINE>|<INST>|</INST>', ''),  # Remove other artifacts
+                    (r'\s+', ' '),  # Normalize whitespace
+                ]
+                
+                import re
+                for pattern, replacement in cleanup_patterns:
+                    response = re.sub(pattern, replacement, response)
+                
+                response = response.strip()
+                
+                self.controllable_model.reset()
+                return response
+        
         except RuntimeError as e:
             if "CUDA" in str(e):
                 # Attempt recovery by moving to CPU
