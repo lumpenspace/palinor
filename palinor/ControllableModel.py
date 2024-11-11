@@ -72,25 +72,17 @@ class ControllableModel(torch.nn.Module):
             layers[layer_id] = layers[layer_id].block
         return self.model
 
-    def set_control(
-        self, control: "ControlVector", coeff: float = 1.0, **kwargs: Any
-    ) -> None:
-        """
-        Set a control vector for the controlled layers.
-
-        Args:
-            control: The control vector to apply
-            coeff: Strength of control (negative inverts the control, e.g. happy→sad)
-            **kwargs: Additional control parameters
-                normalize: Rescale activations after control (default: False)
-                operator: How to combine base output and control (default: +)
-        """
+    def set_control(self, control: ControlVector, coeff: float = 1.0) -> None:
+        """Set the control vector and coefficient."""
         raw_control = {}
-        for layer_id in self.layer_ids:
-            raw_control[layer_id] = torch.tensor(coeff * control.poles[layer_id]).to(
-                self.model.device, dtype=self.model.dtype
-            )
-        self.set_raw_control(raw_control, **kwargs)
+        for layer_id in control.poles:
+            control_tensor = control.poles[layer_id].clone().detach()
+            if torch.isnan(control_tensor).any() or torch.isinf(control_tensor).any():
+                raise ValueError(
+                    f"Control vector for layer {layer_id} contains NaN or Inf values"
+                )
+            raw_control[layer_id] = (coeff * control_tensor).to(self.model.device)
+        self.control = raw_control
 
     def reset(self) -> None:
         """Reset all layer controls, returning the model to base behavior."""
