@@ -89,7 +89,13 @@ class ControlLayer(torch.nn.Module):
         modified = self.params.operator(modified, control * mask)
 
         # Renormalize if requested
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
+        ...
+        # Apply control with stronger effect
         if self.params.normalize:
+            # Apply control then renormalize more aggressively
+            modified = self.params.operator(modified, control * mask * 1.5)  # Boost effect
+            norm_pre = torch.norm(modified, dim=-1, keepdim=True)
             norm_post = torch.norm(modified, dim=-1, keepdim=True)
             modified = modified / norm_post * norm_pre
 

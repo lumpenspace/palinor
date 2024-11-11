@@ -148,7 +148,7 @@ def read_representations(
     dataset: Sequence[DatasetEntry],
     max_batch_size: int = 32,
     method: Literal["pca_diff", "pca_center"] = "pca_diff",
-    amplification_factor: float = 3.0,
+    amplification_factor: float = 5.0,
     **kwargs: Any,
 ) -> Dict[int, torch.Tensor]:
     """Enhanced representation reading with better activation analysis."""
@@ -232,6 +232,13 @@ def read_representations(
                 if (proj_a < proj_b).float().mean() > (0.5 - 0.1 * weight):
                     control_vector = -control_vector
 
+                proj_diff = (proj_a - proj_b).mean()
+                console.print(f"Average projection difference: {proj_diff}")
+
+            console.print(f"A mean activations sample: {a_mean[:10]}")
+            console.print(f"B mean activations sample: {b_mean[:10]}")
+            console.print(f"Activation difference magnitude: {(a_mean - b_mean).abs().mean()}")
+
         else:  # pca_center
             center = (a_states.mean(dim=0) + b_states.mean(dim=0)) / 2
             a_dev = a_states - center
@@ -270,6 +277,7 @@ def read_representations(
 
         console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
         control_vectors[layer] = control_vector.cpu()
+        console.print(f"Control vector magnitude: {control_vector.abs().mean()}")
 
         if use_cuda:
             torch.cuda.empty_cache()
