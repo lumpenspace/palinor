@@ -47,7 +47,7 @@ def create_personality_prompts(
     a_adjective: str, 
     b_adjective: str,
 ) -> list[DatasetEntry]:
-    """Create prompts with proper case formatting."""
+    """Create prompts letting model personality control the style."""
     templates = load_yaml_template(template_path)
     prompts = []
 
@@ -55,13 +55,10 @@ def create_personality_prompts(
         user_prompts = template["prompts"]
         
         for user_prompt in user_prompts:
-            # Format A in lowercase, B in uppercase
-            a_prompt = user_prompt.lower()  # Lowercase for sad/quiet
-            b_prompt = user_prompt.upper()  # Uppercase for excited/loud
-            
+            # Let the model's understanding of the personality traits control the style
             entry = DatasetEntry(
-                a=[Message(role="user", content=a_prompt)],
-                b=[Message(role="user", content=b_prompt)],
+                a=[Message(role="user", content=user_prompt)],
+                b=[Message(role="user", content=user_prompt)],
                 a_trait=a_adjective,
                 b_trait=b_adjective
             )
