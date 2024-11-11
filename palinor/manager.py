@@ -14,7 +14,6 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 from huggingface_hub import login
-import dotenv
 
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
@@ -22,11 +21,9 @@ from .message_template import message_template
 from .create_dataset import create_personality_prompts
 
 
-dotenv.load_dotenv()
 
 console = Console()
 
-hf_token = os.getenv("HF_TOKEN")
 
 
 class palinorManager:
@@ -40,7 +37,6 @@ class palinorManager:
         self,
         model_name: str,
         cache_dir: Optional[str] = None,
-        hf_token: Optional[str] = os.getenv("HF_TOKEN"),
         layer_ids: Optional[list[int]] = None,
         device: Optional[str] = None,
     ):
@@ -50,7 +46,6 @@ class palinorManager:
         Args:
             model_name: Name of the model on HuggingFace
             cache_dir: Directory to store models and vectors (default: ~/.palinor)
-            hf_token: HuggingFace token for gated models
             layer_ids: Which layers to control (default: [-1, -2, -3])
             device: Device to use for computation (default: auto)
         """
@@ -70,10 +65,6 @@ class palinorManager:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.vectors_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
-
-        # Set up HF token if provided
-        if hf_token:
-            login(token=hf_token)
 
         # Load model and tokenizer
         self.model = self._load_model()
@@ -97,7 +88,6 @@ class palinorManager:
             cache_dir=str(self.models_dir),
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
             device_map="auto" if self.device == "cuda" else None,
-            token=hf_token,
         )
 
         if self.device == "cuda":
@@ -166,119 +156,119 @@ class palinorManager:
 
         return vector
 
-def generate(
-    self,
-    prompt: str,
-    vector_name: Optional[str] = None,
-    coeff: float = 1.0,
-    **kwargs: Any,
-) -> str:
-    """
-    Generate text with optional control vector.
-
-    Args:
-        prompt: Input text
-        vector_name: Name of vector to use (if any)
-        coeff: Control strength (negative inverts control)
-        **kwargs: Additional generation parameters
-
-    Returns:
-        Generated text
-    """
-    if vector_name:
-        if vector_name not in self.vectors:
-            raise ValueError(
-                f"Vector '{vector_name}' not found. Available vectors: "
-                f"{list(self.vectors.keys())}"
-            )
-
-        # Clean the vector before using it
-        vector = self.vectors[vector_name]
-        for layer_id, tensor in vector.poles.items():
-            if torch.isnan(tensor).any() or torch.isinf(tensor).any():
-                # Clean the tensor
-                vector.poles[layer_id] = torch.nan_to_num(
-                    tensor, nan=0.0, posinf=1.0, neginf=-1.0
+    def generate(
+        self,
+        prompt: str,
+        vector_name: Optional[str] = None,
+        coeff: float = 1.0,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Generate text with optional control vector.
+    
+        Args:
+            prompt: Input text
+            vector_name: Name of vector to use (if any)
+            coeff: Control strength (negative inverts control)
+            **kwargs: Additional generation parameters
+    
+        Returns:
+            Generated text
+        """
+        if vector_name:
+            if vector_name not in self.vectors:
+                raise ValueError(
+                    f"Vector '{vector_name}' not found. Available vectors: "
+                    f"{list(self.vectors.keys())}"
                 )
-
-        console.print(f"Using vector '{vector_name}' with strength {coeff}")
-        self.controllable_model.set_control(vector, coeff=coeff)
-    else:
-        console.print("No vector specified, using default model")
-
-    # Simple prompt formatting without system message
-    formatted_prompt = f"<s>[INST] {prompt} [/INST]"
-
-    # Extract generation parameters
-    max_new_tokens = kwargs.pop("max_new_tokens", 50)
-
-    # Create inputs
-    inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(
-        self.model.device
-    )
-
-    try:
-        with console.status("[bold green]Generating response...") as status:
-            # Add safety parameters for generation
-            generation_config = {
-                "max_new_tokens": max_new_tokens,
-                "temperature": kwargs.pop("temperature", 1.0),
-                "top_p": kwargs.pop("top_p", 0.9),  # Add top_p sampling
-                "do_sample": kwargs.pop("do_sample", True),
-                "pad_token_id": self.tokenizer.eos_token_id,
-                "repetition_penalty": kwargs.pop(
-                    "repetition_penalty", 1.1
-                ),  # Add repetition penalty
-                **kwargs,
-            }
-
-            outputs = self.controllable_model.generate(
-                **inputs, **generation_config
-            )
-
-        # Decode the output
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Clean up the response
-        if response.startswith(formatted_prompt):
-            response = response[len(formatted_prompt):].strip()
-
-        # Escape any rich markup characters
-        response = response.replace("[", "\\[").replace("]", "\\]")
-        self.controllable_model.reset()
-        return response
-
-    except RuntimeError as e:
-        if "CUDA" in str(e):
-            # Attempt recovery by moving to CPU
-            console.print(
-                "[yellow]CUDA error detected, attempting to fall back to CPU...[/yellow]"
-            )
-            try:
-                self.device = "cpu"
-                self.model = self.model.cpu()
-                self.controllable_model = ControllableModel(
-                    self.model, layer_ids=self.layer_ids
-                )
-                if vector_name:
-                    self.controllable_model.set_control(
-                        self.vectors[vector_name], coeff=coeff
+    
+            # Clean the vector before using it
+            vector = self.vectors[vector_name]
+            for layer_id, tensor in vector.poles.items():
+                if torch.isnan(tensor).any() or torch.isinf(tensor).any():
+                    # Clean the tensor
+                    vector.poles[layer_id] = torch.nan_to_num(
+                        tensor, nan=0.0, posinf=1.0, neginf=-1.0
                     )
+    
+            console.print(f"Using vector '{vector_name}' with strength {coeff}")
+            self.controllable_model.set_control(vector, coeff=coeff)
+        else:
+            console.print("No vector specified, using default model")
+    
+        # Simple prompt formatting without system message
+        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+    
+        # Extract generation parameters
+        max_new_tokens = kwargs.pop("max_new_tokens", 50)
+    
+        # Create inputs
+        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(
+            self.model.device
+        )
+    
+        try:
+            with console.status("[bold green]Generating response...") as status:
+                # Add safety parameters for generation
+                generation_config = {
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": kwargs.pop("temperature", 1.0),
+                    "top_p": kwargs.pop("top_p", 0.9),  # Add top_p sampling
+                    "do_sample": kwargs.pop("do_sample", True),
+                    "pad_token_id": self.tokenizer.eos_token_id,
+                    "repetition_penalty": kwargs.pop(
+                        "repetition_penalty", 1.1
+                    ),  # Add repetition penalty
+                    **kwargs,
+                }
+    
                 outputs = self.controllable_model.generate(
                     **inputs, **generation_config
                 )
-                response = self.tokenizer.decode(
-                    outputs[0], skip_special_tokens=True
+    
+            # Decode the output
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
+            # Clean up the response
+            if response.startswith(formatted_prompt):
+                response = response[len(formatted_prompt):].strip()
+    
+            # Escape any rich markup characters
+            response = response.replace("[", "\\[").replace("]", "\\]")
+            self.controllable_model.reset()
+            return response
+    
+        except RuntimeError as e:
+            if "CUDA" in str(e):
+                # Attempt recovery by moving to CPU
+                console.print(
+                    "[yellow]CUDA error detected, attempting to fall back to CPU...[/yellow]"
                 )
-                if response.startswith(formatted_prompt):
-                    response = response[len(formatted_prompt):].strip()
-                return response
-            except Exception as cpu_e:
-                console.print(f"[red]CPU fallback failed: {str(cpu_e)}[/red]")
-                return (
-                    f"Error during generation (CPU fallback failed): {str(cpu_e)}"
-                )
-        return f"Error during generation: {str(e)}"
+                try:
+                    self.device = "cpu"
+                    self.model = self.model.cpu()
+                    self.controllable_model = ControllableModel(
+                        self.model, layer_ids=self.layer_ids
+                    )
+                    if vector_name:
+                        self.controllable_model.set_control(
+                            self.vectors[vector_name], coeff=coeff
+                        )
+                    outputs = self.controllable_model.generate(
+                        **inputs, **generation_config
+                    )
+                    response = self.tokenizer.decode(
+                        outputs[0], skip_special_tokens=True
+                    )
+                    if response.startswith(formatted_prompt):
+                        response = response[len(formatted_prompt):].strip()
+                    return response
+                except Exception as cpu_e:
+                    console.print(f"[red]CPU fallback failed: {str(cpu_e)}[/red]")
+                    return (
+                        f"Error during generation (CPU fallback failed): {str(cpu_e)}"
+                    )
+            return f"Error during generation: {str(e)}"
 
     def list_vectors(self) -> list[str]:
         """Get names of available vectors."""
