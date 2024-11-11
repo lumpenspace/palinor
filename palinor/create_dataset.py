@@ -43,35 +43,25 @@ def save_prompts(prompts: Sequence[DatasetEntry], output_path: str) -> None:
 
 
 def create_personality_prompts(
-    template_path: str = "alphapenger.yaml",
-    a_adjective: str = "good-hearted",
-    b_adjective: str = "mischievous",
+    template_path: str,
+    a_adjective: str, 
+    b_adjective: str,
 ) -> list[DatasetEntry]:
-    """Create prompts interpolated with two different personalities."""
+    """Create prompts with just the user messages for cleaner training."""
     templates = load_yaml_template(template_path)
     prompts = []
 
     for template in templates:
-        # Get system template and user prompts
-        system_template = template["system_template"]
         user_prompts = template["prompts"]
-
-        # Create prompts for first personality
-        system1 = system_template.format(identity=a_adjective)
-        system2 = system_template.format(identity=b_adjective)
-
+        
         for user_prompt in user_prompts:
-            prompts.append(
-                DatasetEntry(
-                    a=[
-                        Message(role="system", content=system1),
-                        Message(role="user", content=user_prompt),
-                    ],
-                    b=[
-                        Message(role="system", content=system2),
-                        Message(role="user", content=user_prompt),
-                    ],
-                )
+            # Just store the user prompts without system context
+            entry = DatasetEntry(
+                a=[Message(role="user", content=user_prompt)],
+                b=[Message(role="user", content=user_prompt)],
+                a_trait=a_adjective,
+                b_trait=b_adjective
             )
+            prompts.append(entry)
 
     return prompts

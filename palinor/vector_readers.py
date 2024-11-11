@@ -16,25 +16,13 @@ console = Console()
 
 
 def format_messages(messages: Sequence[Message]) -> str:
-    """Format messages using Llama chat format."""
+    """Format messages without system context for training."""
     formatted: list[str] = []
-    first_message = True
     for msg in messages:
-        if msg.role == "system":
-            # For system message, include it in the first INST tag
-            formatted.append(f"<s>[INST] <<SYS>>\n{msg.content}\n<</SYS>>\n\n")
-        elif msg.role == "user":
-            if first_message:
-                # First user message goes right after system
-                formatted.append(f"{msg.content} [/INST]")
-                first_message = False
-            else:
-                # Subsequent user messages start a new exchange
-                formatted.append(f"<s>[INST] {msg.content} [/INST]")
-        elif msg.role == "assistant":
+        if msg.role == "user":
+            formatted.append(f"<s>[INST] {msg.content} [/INST]")
+        elif msg.role == "assistant":  
             formatted.append(f"{msg.content} </s>")
-        else:
-            formatted.append(msg.content)
     return "".join(formatted)
 
 
@@ -173,11 +161,12 @@ def read_representations(
     else:
         layers = [-1, -2, -3]
 
-    # Get hidden states with responses included
+    # Get hidden states with responses included - now using simpler message format
     hidden_states = get_batch_hidden_states(
         model, tokenizer, dataset, layers, max_batch_size
     )
 
+    # Rest of function remains the same...
     control_vectors = {}
     for layer, states in hidden_states.items():
         console.print(f"Processing layer {layer}: {states.shape}")
