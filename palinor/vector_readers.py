@@ -72,7 +72,7 @@ def get_batch_hidden_states(
     hidden_layers: Sequence[int],
     batch_size: int = 32,
 ) -> Dict[int, torch.Tensor]:
-    """Process inputs in batches to get hidden states and responses."""
+    """Process inputs in batches to get hidden states from generated responses."""
     device = model.device
     use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
@@ -82,45 +82,77 @@ def get_batch_hidden_states(
         for entry in inputs
     ]
 
-    tokenizer.padding_side = "left"
-    tokenizer.pad_token = tokenizer.eos_token
+    # First generate responses for each personality
+    a_responses = []
+    b_responses = []
+    
+    for i in range(0, len(dataset_entries), batch_size):
+        batch = dataset_entries[i:i + batch_size]
+        
+        # Generate A personality responses
+        a_prompts = [f"You are {entry.a_trait}. Respond to: {entry.a[0].content}" for entry in batch]
+        a_batch_responses = []
+        for prompt in a_prompts:
+            with torch.inference_mode():
+                tokens = tokenizer(prompt, return_tensors="pt").to(device)
+                output_ids = model.generate(
+                    **tokens,
+                    max_new_tokens=100,
+                    temperature=0.7,
+                    top_p=0.9,
+                )
+                response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                a_batch_responses.append(response)
+        a_responses.extend(a_batch_responses)
+        
+        # Generate B personality responses
+        b_prompts = [f"You are {entry.b_trait}. Respond to: {entry.b[0].content}" for entry in batch]
+        b_batch_responses = []
+        for prompt in b_prompts:
+            with torch.inference_mode():
+                tokens = tokenizer(prompt, return_tensors="pt").to(device)
+                output_ids = model.generate(
+                    **tokens,
+                    max_new_tokens=100,
+                    temperature=0.7,
+                    top_p=0.9,
+                )
+                response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                b_batch_responses.append(response)
+        b_responses.extend(b_batch_responses)
+        
+        if use_cuda:
+            torch.cuda.empty_cache()
 
+    # Now get hidden states from the responses
     hidden_states = {layer_idx: [] for layer_idx in hidden_layers}
     
-    # Process in batches
-    for batch_idx in range(0, len(dataset_entries), batch_size):
-        batch_entries = dataset_entries[batch_idx:batch_idx + batch_size]
+    for i in range(0, len(a_responses), batch_size):
+        batch_a = a_responses[i:i + batch_size]
+        batch_b = b_responses[i:i + batch_size]
         
-        # Prepare both prompts and system contexts for batch
-        a_prompts = [f"You are {entry.a_trait}. {entry.a[0].content}" for entry in batch_entries]
-        b_prompts = [f"You are {entry.b_trait}. {entry.b[0].content}" for entry in batch_entries]
-        
-        # Tokenize entire batch at once
-        batch_inputs = tokenizer(
-            a_prompts + b_prompts,  # Combine both sets
+        # Get hidden states for both sets of responses
+        tokens = tokenizer(
+            batch_a + batch_b,
             padding=True,
             truncation=True,
+            max_length=512,
             return_tensors="pt",
-            max_length=512
         ).to(device)
 
-        # Generate responses and get hidden states in one pass
         with torch.autocast(device_type=device.type, dtype=dtype, enabled=use_cuda):
             with torch.no_grad():
                 outputs = model(
-                    **batch_inputs,
+                    **tokens,
                     output_hidden_states=True,
                     return_dict=True
                 )
 
-                # Process hidden states for each layer
                 for layer_idx in hidden_layers:
                     states = outputs.hidden_states[layer_idx].to(dtype)
-                    
-                    # Efficient pooling over batch
                     pooled_states = compute_attention_pooling(
                         states, 
-                        batch_inputs.attention_mask
+                        tokens.attention_mask
                     )
                     hidden_states[layer_idx].append(pooled_states)
 
