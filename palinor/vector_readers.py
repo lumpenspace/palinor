@@ -72,7 +72,6 @@ def get_batch_hidden_states(
     hidden_layers: Sequence[int],
     batch_size: int = 32,
 ) -> Dict[int, torch.Tensor]:
-    """Process inputs in batches to get hidden states."""
     device = model.device
     use_cuda = device.type == "cuda"
     dtype = torch.float32 if not use_cuda else torch.float16
@@ -82,40 +81,41 @@ def get_batch_hidden_states(
         for entry in inputs
     ]
 
-    console.print("Preparing prompts and responses...")
-    a_texts = [format_messages(entry.a) for entry in dataset_entries]
-    b_texts = [format_messages(entry.b) for entry in dataset_entries]
-    if not use_cuda:
-        batch_size = min(batch_size, 4)
-        console.print(f"Using CPU mode with batch size {batch_size}")
-    console.print("Preparing prompts and responses...")
-    # Add debug printing for first few prompts
-    for i, entry in enumerate(dataset_entries[:2]):
-        console.print(f"Sample A{i}: {entry.a[0].content[:50]}...")
-        console.print(f"Sample B{i}: {entry.b[0].content[:50]}...")
+    # First, generate responses for both personalities
+    a_responses = []
+    b_responses = []
     
-    a_texts = [format_messages(entry.a) for entry in dataset_entries]
-    b_texts = [format_messages(entry.b) for entry in dataset_entries]
+    for entry in dataset_entries:
+        # Generate with personality A
+        a_prompt = f"You are {entry.a_trait}. {entry.a[0].content}"
+        a_response = generate_response(model, tokenizer, [Message(role="user", content=a_prompt)], device)
+        a_responses.append(a_response)
+        
+        # Generate with personality B
+        b_prompt = f"You are {entry.b_trait}. {entry.b[0].content}"
+        b_response = generate_response(model, tokenizer, [Message(role="user", content=b_prompt)], device)
+        b_responses.append(b_response)
 
-    # Verify formatting is preserved
-    console.print(f"\nSample formatted A: {a_texts[0][:50]}...")
-    console.print(f"Sample formatted B: {b_texts[0][:50]}...")
+    # Now get hidden states from the responses
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
     max_length = max(
-        max(len(tokenizer.encode(p)) for p in a_texts + b_texts),
-        512,  # Reasonable default max length
+        max(len(tokenizer.encode(p)) for p in a_responses + b_responses),
+        512,
     )
-    console.print(f"Max sequence length: {max_length}")
 
     hidden_states = {layer_idx: [] for layer_idx in hidden_layers}
+    
+    for batch_idx in range(0, len(a_responses), batch_size):
+        batch_end = min(batch_idx + batch_size, len(a_responses))
+        batch_a = a_responses[batch_idx:batch_end]
+        batch_b = b_responses[batch_idx:batch_end]
 
-    for batch_idx in range(0, len(a_texts), batch_size):
-        batch_end = min(batch_idx + batch_size, len(a_texts))
+        # Rest of processing same as before...
         batch_a = a_texts[batch_idx:batch_end]
         batch_b = b_texts[batch_idx:batch_end]
-        
+
         try:
             tokens = tokenizer(
                 batch_a + batch_b,
@@ -128,14 +128,25 @@ def get_batch_hidden_states(
             with torch.autocast(device_type=device.type, dtype=dtype, enabled=use_cuda):
                 with torch.no_grad():
                     outputs = model(
-                        **tokens, output_hidden_states=True, return_dict=True
+                        **tokens, 
+                        output_hidden_states=True, 
+                        return_dict=True
                     )
 
                     for layer_idx in hidden_layers:
                         states = outputs.hidden_states[layer_idx].to(dtype)
-                        pooled_states: torch.Tensor = compute_attention_pooling(
+                        
+                        # Get both mean and max pooled states
+                        mean_states = compute_attention_pooling(
                             states, tokens.attention_mask
                         )
+                        max_states = torch.max(
+                            states * tokens.attention_mask.unsqueeze(-1),
+                            dim=1
+                        )[0]
+                        
+                        # Combine them
+                        pooled_states = (mean_states + max_states) / 2
                         hidden_states[layer_idx].append(pooled_states)
 
             if use_cuda:
@@ -143,7 +154,6 @@ def get_batch_hidden_states(
 
         except RuntimeError as e:
             if "out of memory" in str(e):
-                console.print("[red]Out of memory, trying to recover...[/red]")
                 if use_cuda:
                     torch.cuda.empty_cache()
             raise e
