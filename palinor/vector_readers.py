@@ -16,12 +16,12 @@ console = Console()
 
 
 def format_messages(messages: Sequence[Message]) -> str:
-    """Format messages cleanly for training."""
+    """Format messages without special tokens for training."""
     formatted: list[str] = []
     for msg in messages:
         if msg.role == "user":
-            formatted.append(f"<s>[INST] {msg.content} [/INST]")
-    return " ".join(formatted)  # Simple joining without extra tokens
+            formatted.append(msg.content)  # Just the content, no special tokens
+    return " ".join(formatted)
 
 
 def generate_response(

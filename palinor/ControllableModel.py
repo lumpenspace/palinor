@@ -113,8 +113,10 @@ class ControllableModel(torch.nn.Module):
         return self.model.forward(*args, **kwargs)
 
     def generate(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate output from the model, with control applied."""
-        return self.model.generate(*args, **kwargs)
+        """Generate with clean token handling."""
+        outputs = self.model.generate(*args, **kwargs)
+        self.reset()  # Reset control after generation
+        return outputs
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Call the model, with control applied."""

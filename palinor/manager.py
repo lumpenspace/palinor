@@ -17,7 +17,6 @@ from huggingface_hub import login
 
 from .ControllableModel import ControllableModel
 from .ControlVector import ControlVector
-from .message_template import message_template
 from .create_dataset import create_personality_prompts
 
 
@@ -171,7 +170,6 @@ class palinorManager:
                     f"{list(self.vectors.keys())}"
                 )
                 
-            # Clean the vector before using
             vector = self.vectors[vector_name]
             for layer_id, tensor in vector.poles.items():
                 if torch.isnan(tensor).any() or torch.isinf(tensor).any():
@@ -184,23 +182,30 @@ class palinorManager:
         else:
             console.print("No vector specified, using default model")
 
-        # Clean prompt formatting
-        formatted_prompt = f"<s>[INST] {prompt} [/INST]"
+        # Simple, clean prompt format
+        formatted_prompt = f"{prompt}"  # No special tokens in prompt
 
-        # Create inputs
-        inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(
-            self.model.device
-        )
+        # Create inputs with careful tokenization
+        inputs = self.tokenizer(
+            formatted_prompt,
+            return_tensors="pt",
+            add_special_tokens=True,  # Let tokenizer handle special tokens
+            padding=True,
+        ).to(self.model.device)
 
         try:
             with console.status("[bold green]Generating response...") as status:
+                # More controlled generation settings
                 generation_config = {
-                    "max_new_tokens": kwargs.pop("max_new_tokens", 50),
-                    "temperature": kwargs.pop("temperature", 1.0),
+                    "max_new_tokens": kwargs.pop("max_new_tokens", 100),  # Longer completion
+                    "temperature": kwargs.pop("temperature", 0.7),  # More focused
                     "top_p": kwargs.pop("top_p", 0.9),
                     "do_sample": kwargs.pop("do_sample", True),
                     "pad_token_id": self.tokenizer.eos_token_id,
-                    "repetition_penalty": kwargs.pop("repetition_penalty", 1.1),
+                    "repetition_penalty": kwargs.pop("repetition_penalty", 1.15),
+                    "no_repeat_ngram_size": 3,  # Prevent repetitive phrases
+                    "min_length": 20,  # Ensure some minimum response
+                    "length_penalty": 1.0,  # Balanced length
                     **kwargs,
                 }
 
@@ -208,37 +213,43 @@ class palinorManager:
                     **inputs, **generation_config
                 )
 
-                # Decode and clean the response
-                response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                # Careful decoding and cleaning
+                response = self.tokenizer.decode(
+                    outputs[0],
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=True
+                )
                 
-                # Clean up formatting artifacts
-                response = response.replace(formatted_prompt, "")  # Remove input prompt
-                response = response.strip()
+                # Remove the input prompt if it appears
+                if response.startswith(formatted_prompt):
+                    response = response[len(formatted_prompt):].strip()
                 
-                # Remove any remaining special tokens and formatting
+                # Clean up any remaining artifacts
+                import re
                 cleanup_patterns = [
-                    (r'<s>|</s>', ''),  # Remove sentence tokens
-                    (r'\[INST\]|\[/INST\]', ''),  # Remove instruction tokens
-                    (r'\\+\[|\\\]', ''),  # Remove escaped brackets
-                    (r'<SPLIT LINE>|<INST>|</INST>', ''),  # Remove other artifacts
+                    (r'<s>|</s>', ''),
+                    (r'\[INST\]|\[/INST\]', ''),
+                    (r'\[.*?\]', ''),  # Remove any bracketed content
+                    (r'\\+[[\]]', ''),
+                    (r'<.*?>', ''),  # Remove any HTML-like tags
                     (r'\s+', ' '),  # Normalize whitespace
                 ]
                 
-                import re
                 for pattern, replacement in cleanup_patterns:
                     response = re.sub(pattern, replacement, response)
                 
                 response = response.strip()
                 
+                # Ensure we have actual content
+                if not response or len(response) < 10:
+                    response = self.generate(prompt, vector_name, coeff * 0.8)  # Retry with reduced coefficient
+                
                 self.controllable_model.reset()
                 return response
-        
+
         except RuntimeError as e:
             if "CUDA" in str(e):
-                # Attempt recovery by moving to CPU
-                console.print(
-                    "[yellow]CUDA error detected, attempting to fall back to CPU...[/yellow]"
-                )
+                console.print("[yellow]CUDA error detected, attempting to fall back to CPU...[/yellow]")
                 try:
                     self.device = "cpu"
                     self.model = self.model.cpu()
@@ -246,23 +257,15 @@ class palinorManager:
                         self.model, layer_ids=self.layer_ids
                     )
                     if vector_name:
-                        self.controllable_model.set_control(
-                            self.vectors[vector_name], coeff=coeff
-                        )
-                    outputs = self.controllable_model.generate(
-                        **inputs, **generation_config
-                    )
-                    response = self.tokenizer.decode(
-                        outputs[0], skip_special_tokens=True
-                    )
+                        self.controllable_model.set_control(vector, coeff=coeff)
+                    outputs = self.controllable_model.generate(**inputs, **generation_config)
+                    response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                     if response.startswith(formatted_prompt):
                         response = response[len(formatted_prompt):].strip()
                     return response
                 except Exception as cpu_e:
                     console.print(f"[red]CPU fallback failed: {str(cpu_e)}[/red]")
-                    return (
-                        f"Error during generation (CPU fallback failed): {str(cpu_e)}"
-                    )
+                    return f"Error during generation (CPU fallback failed): {str(cpu_e)}"
             return f"Error during generation: {str(e)}"
 
     def list_vectors(self) -> list[str]:
