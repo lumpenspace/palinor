@@ -255,6 +255,9 @@ def read_representations(
                 important_dims
             ]
 
+            # Add clipping to prevent extreme values
+            control_vector = torch.clamp(control_vector, min=-10.0, max=10.0)
+
             magnitude = torch.abs(control_vector)
             scaled_magnitude = torch.pow(magnitude, amplification_factor)
             control_vector = control_vector.sign() * scaled_magnitude
@@ -262,8 +265,11 @@ def read_representations(
             layer_scale = 1.0 / math.sqrt(hidden_dim)
             control_vector = control_vector * layer_scale
 
-        # Final normalization
-        control_vector = F.normalize(control_vector, p=2, dim=0)
+            # Add final normalization and cleaning
+            control_vector = F.normalize(control_vector, p=2, dim=0)
+            control_vector = torch.nan_to_num(
+                control_vector, nan=0.0, posinf=1.0, neginf=-1.0
+            )
 
         console.print(f"Control vector shape for layer {layer}: {control_vector.shape}")
         control_vectors[layer] = control_vector.cpu()

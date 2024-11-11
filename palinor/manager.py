@@ -185,14 +185,24 @@ class palinorManager:
         Returns:
             Generated text
         """
-        if vector_name is not None:
+        if vector_name:
             if vector_name not in self.vectors:
                 raise ValueError(
                     f"Vector '{vector_name}' not found. Available vectors: "
                     f"{list(self.vectors.keys())}"
                 )
+
+            # Clean the vector before using it
+            vector = self.vectors[vector_name]
+            for layer_id, tensor in vector.poles.items():
+                if torch.isnan(tensor).any() or torch.isinf(tensor).any():
+                    # Clean the tensor
+                    vector.poles[layer_id] = torch.nan_to_num(
+                        tensor, nan=0.0, posinf=1.0, neginf=-1.0
+                    )
+
             console.print(f"Using vector '{vector_name}' with strength {coeff}")
-            self.controllable_model.set_control(self.vectors[vector_name], coeff=coeff)
+            self.controllable_model.set_control(vector, coeff=coeff)
         else:
             console.print("No vector specified, using default model")
 
@@ -323,7 +333,7 @@ class palinorManager:
             """[bold magenta]
         ╔═══════════════════════════════════════╗
         ║             [cyan]P A L I N O R[/cyan]             ║
-        ╚════════��══════════════════════════════╝[/bold magenta]
+        ╚══════════════════════════════════════╝[/bold magenta]
         """
         )
 
